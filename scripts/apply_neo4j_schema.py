@@ -1,52 +1,41 @@
-"""Apply Neo4j constraints and the optional environment-verification seed."""
+"""Apply Neo4j constraints and the optional deterministic seed graph.
+
+Run from the repo root:
+    uv run --project services/ml-service python scripts/apply_neo4j_schema.py --seed
+The schema and seed live in ``services/ml-service/app/graph`` (single source of truth).
+"""
 
 from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
-from neo4j import GraphDatabase
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services" / "ml-service"))
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CONSTRAINTS = REPO_ROOT / "neo4j" / "constraints" / "001_constraints.cypher"
-SEED = REPO_ROOT / "neo4j" / "seed" / "verify_environment.cypher"
-
-
-def cypher_statements(path: Path) -> list[str]:
-    kept_lines: list[str] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip().startswith("//"):
-            continue
-        kept_lines.append(line)
-    return [part.strip() for part in "\n".join(kept_lines).split(";") if part.strip()]
-
-
-def apply(path: Path, uri: str, user: str, password: str) -> None:
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    try:
-        driver.verify_connectivity()
-        with driver.session() as session:
-            for statement in cypher_statements(path):
-                session.run(statement)
-    finally:
-        driver.close()
+from app.graph.client import GraphClient
+from app.graph.schema import apply_schema
+from app.graph.seed import apply_seed
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--seed",
-        action="store_true",
-        help="Load the small environment-verification graph after constraints.",
-    )
+    parser.add_argument("--seed", action="store_true", help="also load the deterministic seed")
     args = parser.parse_args()
-    uri = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
-    user = os.environ.get("NEO4J_USER", "neo4j")
-    password = os.environ.get("NEO4J_PASSWORD", "aedis_password")
-    apply(CONSTRAINTS, uri, user, password)
-    if args.seed:
-        apply(SEED, uri, user, password)
+    client = GraphClient(
+        os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        os.environ.get("NEO4J_USER", "neo4j"),
+        os.environ.get("NEO4J_PASSWORD", "aedis_password"),
+    )
+    try:
+        client.verify()
+        apply_schema(client)
+        print("schema applied")
+        if args.seed:
+            print(f"seed applied: {apply_seed(client)} events")
+    finally:
+        client.close()
 
 
 if __name__ == "__main__":

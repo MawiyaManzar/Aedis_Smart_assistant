@@ -74,7 +74,9 @@ Apply Neo4j constraints after Neo4j is healthy:
 uv run --project services/ml-service python scripts/apply_neo4j_schema.py --seed
 ```
 
-`--seed` loads two verification accounts, one device, and one documentation IP (`203.0.113.10`). It is not the demo mule-ring dataset.
+Constraints and the seed are defined in Python (`services/ml-service/app/graph/schema.py` and `seed.py`) so the Docker image carries them. `--seed` loads a deterministic 7-event graph: three ordinary accounts and a three-account ring (`ring-seed-001`) sharing one device and one documentation IP (`203.0.113.50`). It is a verification fixture, not the full demo scenario set.
+
+Graph model: `(Account)-[:TRANSACTED_WITH {transactionId}]->(Account)`, `(Account)-[:SHARES_DEVICE]->(Device)`, `(Account)-[:SHARES_IP]->(IPAddress)`. Two accounts share a device or IP when they point at the same node. `Device.id` and `IPAddress.ip` are global (per the execution plan); accounts are tenant-scoped.
 
 ## Services and ports
 
