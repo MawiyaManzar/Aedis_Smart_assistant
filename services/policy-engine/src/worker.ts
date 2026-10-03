@@ -1,9 +1,10 @@
 import { Redis } from 'ioredis';
+import crypto from 'crypto';
 import { config } from './config.js';
-import { AlertEvent } from './types.js';
-import { getShapDrivers } from './shap/client.js';
-import { generateRegulatorSummary } from './llm/openrouter.js';
-import { initAuditDb, insertAuditLog, updateFraudEventExplanation, closeAuditDb } from './db/audit.js';
+import { AlertInputEvent, InterventionEvent } from './types.js';
+import { initPolicyLoader, getPolicyRule, closePolicyLoader } from './matrix/loader.js';
+import { dispatchInterventions } from './interventions/webhooks.js';
+import { initPolicyDb, recordInterventionAudit, closePolicyDb } from './db/audit.js';
 
 let isRunning = true;
 
@@ -45,10 +46,9 @@ async function setupConsumerGroup(): Promise<void> {
 }
 
 async function startWorkerLoop(): Promise<void> {
-  console.log(`\n🧠 Aedis Explainability Worker started [${config.consumerName}]`);
+  console.log(`\n🛡️ Aedis Policy Engine & Graduated Interventions started [${config.consumerName}]`);
   console.log(`📡 Listening on stream: "${config.alertStream}"`);
-  console.log(`📜 Emitting audit summaries to: "${config.auditStream}"`);
-  console.log(`🤖 LLM Engine: ${config.openrouterApiKey ? config.openrouterModel : 'Deterministic Compliance Template'}\n`);
+  console.log(`⚡ Dispatching interventions to: "${config.interventionStream}"\n`);
 
   while (isRunning) {
     try {
@@ -78,15 +78,13 @@ async function startWorkerLoop(): Promise<void> {
           let parsedVelocity: any = { count1m: 0, count1h: 0, count24h: 0, sumAmount1h: 0 };
           let parsedRings: string[] = [];
 
-          let parsedTopDrivers: any[] = [];
           try {
             if (parsed.payload) parsedPayload = JSON.parse(parsed.payload);
             if (parsed.velocity) parsedVelocity = JSON.parse(parsed.velocity);
             if (parsed.fraudRingIds) parsedRings = JSON.parse(parsed.fraudRingIds);
-            if (parsed.topDrivers) parsedTopDrivers = JSON.parse(parsed.topDrivers);
           } catch (_err) {}
 
-          const alertEvent: AlertEvent = {
+          const alertEvent: AlertInputEvent = {
             alertId: parsed.alertId || '',
             transactionId: parsed.transactionId || '',
             tenantId: parsed.tenantId || 'tenant_bank_alpha',
@@ -96,69 +94,64 @@ async function startWorkerLoop(): Promise<void> {
             fraudRingIds: parsedRings,
             velocity: parsedVelocity,
             payload: parsedPayload,
-            modelVersion: parsed.modelVersion || 'unknown',
             timestamp: parsed.timestamp || new Date().toISOString(),
           };
 
-          // 1. Calculate SHAP feature drivers
-          const shapDrivers = await getShapDrivers(alertEvent, parsedTopDrivers);
+          // 1. Evaluate Rule Tree from active Hot-Reloadable Policy Matrix
+          const policyRule = getPolicyRule(alertEvent.status);
+          const actionsToDispatch = policyRule.actions || [];
 
-          // 2. Generate 1-sentence regulator explanation via OpenRouter / Deterministic Template
-          const explanation = await generateRegulatorSummary(
-            alertEvent.fraudScore,
-            alertEvent.status,
-            shapDrivers
-          );
+          // 2. Dispatch Graduated Webhooks in Parallel
+          const dispatchResults = await dispatchInterventions(alertEvent, actionsToDispatch);
 
-          // 3. Update PostgreSQL Source of Truth
-          await Promise.allSettled([
-            updateFraudEventExplanation(alertEvent.transactionId, shapDrivers, explanation.summary),
-            insertAuditLog({
-              entityType: 'FRAUD_EVENT',
-              entityId: alertEvent.transactionId,
-              eventType: 'EXPLAINED',
-              actor: 'SYSTEM',
-              payload: {
-                alertId: alertEvent.alertId,
-                status: alertEvent.status,
-                fraudScore: alertEvent.fraudScore,
-                shapDrivers,
-                auditSummary: explanation.summary,
-                llmModel: explanation.model,
-                usedFallback: explanation.usedFallback,
-              },
-            }),
-          ]);
+          const stateTransition =
+            alertEvent.status === 'BLOCKED' ? 'BLOCKED_HELD' : 'STEP_UP_SENT';
 
-          // 4. Emit to stream:audit:logged for dashboard streaming
+          const interventionEvent: InterventionEvent = {
+            interventionId: `intv_${crypto.randomBytes(4).toString('hex')}`,
+            alertId: alertEvent.alertId,
+            transactionId: alertEvent.transactionId,
+            tenantId: alertEvent.tenantId,
+            status: alertEvent.status,
+            fraudScore: alertEvent.fraudScore,
+            actionsDispatched: actionsToDispatch,
+            results: dispatchResults,
+            stateTransition,
+            timestamp: new Date().toISOString(),
+          };
+
+          // 3. Persist Intervention Audit to Postgres
+          recordInterventionAudit(interventionEvent).catch(() => {});
+
+          // 4. Emit to stream:intervention:dispatched
           await redisWriter.xadd(
-            config.auditStream,
+            config.interventionStream,
             '*',
+            'interventionId', interventionEvent.interventionId,
             'alertId', alertEvent.alertId,
             'transactionId', alertEvent.transactionId,
             'tenantId', alertEvent.tenantId,
             'status', alertEvent.status,
-            'fraudScore', alertEvent.fraudScore.toString(),
-            'auditSummary', explanation.summary,
-            'shapDrivers', JSON.stringify(shapDrivers),
-            'llmModel', explanation.model,
-            'timestamp', new Date().toISOString()
+            'stateTransition', stateTransition,
+            'actionsDispatched', JSON.stringify(actionsToDispatch),
+            'results', JSON.stringify(dispatchResults),
+            'timestamp', interventionEvent.timestamp
           );
 
           // 5. Acknowledge message in alert stream
           await redisWriter.xack(config.alertStream, config.consumerGroup, messageId);
 
           const durationMs = Date.now() - startTime;
-          console.log(`[EXPLAINED ${alertEvent.transactionId.slice(0, 8)}] in ${durationMs}ms`);
-          console.log(`   ⚖️ Summary: "${explanation.summary}"`);
+          const actionsSummary = actionsToDispatch.join(', ');
+
           console.log(
-            `   📊 Top Driver: ${shapDrivers[0]?.label || 'None'} (${shapDrivers[0]?.impactPercent || 0}%)\n`
+            `[INTERVENTION ${alertEvent.transactionId.slice(0, 8)}] 🎯 Action: [${actionsSummary}] ➔ State: ${stateTransition} in ${durationMs}ms`
           );
         }
       }
     } catch (loopErr: any) {
       if (isRunning) {
-        console.error('❌ Explainability worker loop error:', loopErr.message);
+        console.error('❌ Policy engine worker error:', loopErr.message);
         await new Promise((r) => setTimeout(r, 1000));
       }
     }
@@ -166,16 +159,17 @@ async function startWorkerLoop(): Promise<void> {
 }
 
 async function shutdown(): Promise<void> {
-  console.log('\n🛑 Gracefully shutting down explain-worker...');
+  console.log('\n🛑 Gracefully shutting down policy-engine...');
   isRunning = false;
 
   await Promise.allSettled([
     redisReader.quit(),
     redisWriter.quit(),
-    closeAuditDb(),
+    closePolicyLoader(),
+    closePolicyDb(),
   ]);
 
-  console.log('👋 Explain-worker stopped cleanly');
+  console.log('👋 Policy-engine stopped cleanly');
   process.exit(0);
 }
 
@@ -183,12 +177,13 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 async function main(): Promise<void> {
-  await initAuditDb();
+  await initPolicyDb();
+  await initPolicyLoader();
   await setupConsumerGroup();
   await startWorkerLoop();
 }
 
 main().catch((err) => {
-  console.error('Fatal initialization error in explain-worker:', err);
+  console.error('Fatal initialization error in policy-engine:', err);
   process.exit(1);
 });

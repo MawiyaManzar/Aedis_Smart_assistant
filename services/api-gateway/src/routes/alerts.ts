@@ -36,12 +36,44 @@ export const alertRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
     const { resolution, analystNote } = parseResult.data;
     // Extract authenticated user if available
     const analystId = (request.headers['x-analyst-id'] as string) || 'user_analyst_01';
+    const tenantId = (request.headers['x-tenant-id'] as string) || '00000000-0000-4000-8000-0000000000a1';
+    const requestId = (request.headers['x-request-id'] as string) || crypto.randomUUID();
 
+    // 1. Attempt to forward to ML Service for DB persistence and state-machine integrity
+    let upstreamResult: any = null;
+    try {
+      const resp = await fetch(`${config.mlServiceUrl}/v1/alerts/${encodeURIComponent(id)}/resolve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-request-id': requestId,
+        },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          resolution,
+          resolved_by: analystId,
+          note: analystNote || undefined,
+        }),
+      });
+
+      if (resp.ok) {
+        upstreamResult = await resp.json();
+      } else if (resp.status === 409) {
+        const conflictErr = await resp.json();
+        return reply.status(409).send(conflictErr);
+      }
+    } catch (_err) {
+      // Graceful fallback if ML service is unreachable
+    }
+
+    // 2. Persist in Redis and emit audit event
     const result = await resolveAlertEvent(id, resolution, analystNote, analystId);
 
+    reply.header('x-request-id', requestId);
     return reply.status(200).send({
       message: 'Alert resolved successfully',
       result,
+      upstream: upstreamResult,
     });
   });
 };

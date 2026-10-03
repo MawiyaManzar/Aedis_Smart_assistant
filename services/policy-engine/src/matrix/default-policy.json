@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-10-04T00:00:00.000Z",
+  "fraud": {
+    "FLAGGED": {
+      "actions": ["sms_otp", "whatsapp_otp"],
+      "ttl_seconds": 120,
+      "on_failure": "escalate_to_BLOCKED"
+    },
+    "BLOCKED": {
+      "actions": ["freeze_escrow"],
+      "notify": ["analyst_dashboard"]
+    }
+  },
+  "distress": {
+    "MEDIUM": {
+      "actions": ["in_app_nudge"]
+    },
+    "HIGH": {
+      "actions": ["crm_task", "in_app_nudge"]
+    },
+    "CRITICAL": {
+      "actions": ["crm_task", "crm_call", "soft_hold"]
+    }
+  }
+}

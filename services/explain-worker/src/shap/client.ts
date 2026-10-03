@@ -94,23 +94,47 @@ export function calculateAnalyticalShap(alert: AlertEvent): ShapDriver[] {
 /**
  * Retrieves top-3 SHAP numerical drivers from Python FastAPI ML service or analytical fallback.
  */
-export async function getShapDrivers(alert: AlertEvent): Promise<ShapDriver[]> {
+export async function getShapDrivers(alert: AlertEvent, passedDrivers?: any[]): Promise<ShapDriver[]> {
+  // If top_drivers were already produced by /v1/transactions/score
+  if (Array.isArray(passedDrivers) && passedDrivers.length > 0) {
+    const totalMag = passedDrivers.reduce((acc, d) => acc + Math.abs(d.shap_contribution || 0.1), 0) || 1;
+    return passedDrivers.slice(0, 3).map((d) => ({
+      feature: d.feature,
+      label: `${d.feature} (val: ${d.value})`,
+      value: d.value,
+      direction: (d.shap_contribution ?? 0) >= 0 ? 'INCREASED_RISK' : 'DECREASED_RISK',
+      magnitude: parseFloat(Math.abs(d.shap_contribution ?? 0.1).toFixed(4)),
+      impactPercent: Math.round((Math.abs(d.shap_contribution ?? 0.1) / totalMag) * 100),
+    }));
+  }
+
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 35); // 35ms timeout
+    const timeoutId = setTimeout(() => controller.abort(), 45);
 
     const response = await fetch(`${config.mlServiceUrl}/v1/models/explain/shap`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-request-id': alert.transactionId,
+      },
       body: JSON.stringify({
-        transaction_id: alert.transactionId,
-        score: alert.fraudScore,
-        amount: alert.payload?.amount,
-        velocity_1m: alert.velocity?.count1m,
-        velocity_1h: alert.velocity?.count1h,
-        graph_hops: alert.graphHops,
-        fraud_ring_ids: alert.fraudRingIds,
-        channel: alert.payload?.channel,
+        entity_type: 'FRAUD_EVENT',
+        entity_id: alert.transactionId,
+        model_name: 'fraud',
+        top_n: 3,
+        features: {
+          amount_zscore: ((alert.payload?.amount || 250) - 250) / 500,
+          velocity_1h: alert.velocity?.count1h || 0,
+          velocity_24h: alert.velocity?.count24h || 0,
+          graph_hops: alert.graphHops,
+          is_new_beneficiary: true,
+          device_age_days: 14.0,
+          ip_country_risk: 0.1,
+          hour_of_day: new Date(alert.timestamp).getUTCHours(),
+          day_of_week: new Date(alert.timestamp).getUTCDay(),
+          channel_risk_score: 0.05,
+        },
       }),
       signal: controller.signal,
     });
@@ -119,8 +143,17 @@ export async function getShapDrivers(alert: AlertEvent): Promise<ShapDriver[]> {
 
     if (response.ok) {
       const data: any = await response.json();
-      if (Array.isArray(data.drivers) && data.drivers.length > 0) {
-        return data.drivers.slice(0, 3);
+      const drivers = data.top_drivers || data.drivers;
+      if (Array.isArray(drivers) && drivers.length > 0) {
+        const totalMag = drivers.reduce((acc: number, d: any) => acc + Math.abs(d.shap_contribution || 0.1), 0) || 1;
+        return drivers.slice(0, 3).map((d: any) => ({
+          feature: d.feature,
+          label: `${d.feature} (val: ${d.value})`,
+          value: d.value,
+          direction: (d.shap_contribution ?? 0) >= 0 ? 'INCREASED_RISK' : 'DECREASED_RISK',
+          magnitude: parseFloat(Math.abs(d.shap_contribution ?? 0.1).toFixed(4)),
+          impactPercent: Math.round((Math.abs(d.shap_contribution ?? 0.1) / totalMag) * 100),
+        }));
       }
     }
   } catch (_err) {

@@ -12,6 +12,8 @@ interface SidebarProps {
   isStreaming: boolean;
   setIsStreaming: (val: boolean) => void;
   triggerMockEvent: () => void;
+  onRunScamRingDemo?: () => void;
+  onRunLoanDistressDemo?: () => void;
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
 }
@@ -24,6 +26,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isStreaming,
   setIsStreaming,
   triggerMockEvent,
+  onRunScamRingDemo,
+  onRunLoanDistressDemo,
   mobileOpen,
   setMobileOpen,
 }) => {
@@ -234,6 +238,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               [ + INJECT SCAM BURST ]
             </button>
+
+            {onRunScamRingDemo && (
+              <button
+                onClick={onRunScamRingDemo}
+                className="w-full py-1.5 px-3 bg-[#141413] text-[#FFFFFF] border-2 border-[#141413] font-bold text-[11px] uppercase hover:bg-[#C86432] cursor-pointer text-center"
+              >
+                [ 🚨 DEMO: SCAM RING ATTACK ]
+              </button>
+            )}
+
+            {onRunLoanDistressDemo && (
+              <button
+                onClick={onRunLoanDistressDemo}
+                className="w-full py-1.5 px-3 bg-[#FAF7F2] text-[#141413] border-2 border-[#141413] font-bold text-[11px] uppercase hover:bg-[#141413] hover:text-white cursor-pointer text-center"
+              >
+                [ 📊 DEMO: LOAN DISTRESS SHAP ]
+              </button>
+            )}
           </div>
 
           <div className="pt-2 border-t border-[#141413]/20 flex items-center justify-between text-[10px] text-[#141413]/70 font-semibold">

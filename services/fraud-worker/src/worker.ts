@@ -115,6 +115,7 @@ async function startWorkerLoop(): Promise<void> {
 
           // 3. Score Fraud with Python ONNX ML service or instant heuristic fallback
           const scoringResult = await scoreFraud({
+            tenantId,
             transactionId,
             fromAccountId,
             toAccountId,
@@ -130,19 +131,25 @@ async function startWorkerLoop(): Promise<void> {
 
           const totalLatencyMs = Date.now() - startTime;
 
-          // 4. Asynchronously persist score to PostgreSQL
-          saveFraudEvent({
-            transactionId,
-            fraudScore: scoringResult.fraudScore,
-            status: scoringResult.status,
-            graphHops: graph.graphHops,
-            fraudRingIds: graph.fraudRingIds,
-            modelVersion: scoringResult.modelVersion,
-          }).catch(() => {});
+          // 4. Asynchronously persist score to PostgreSQL if not already done by ML service
+          if (scoringResult.usedFallback) {
+            saveFraudEvent({
+              transactionId,
+              fraudScore: scoringResult.fraudScore,
+              status: scoringResult.status,
+              graphHops: graph.graphHops,
+              fraudRingIds: graph.fraudRingIds,
+              modelVersion: scoringResult.modelVersion,
+            }).catch(() => {});
+          }
 
           // 5. Emit alert if transaction is FLAGGED or BLOCKED
           if (scoringResult.status !== 'APPROVED') {
-            const alertId = crypto.randomUUID();
+            const alertId = scoringResult.fraudEventId || crypto.randomUUID();
+            const ringIds = (scoringResult.fraudRingIds && scoringResult.fraudRingIds.length > 0)
+              ? scoringResult.fraudRingIds
+              : graph.fraudRingIds;
+
             await redisWriter.xadd(
               config.alertStream,
               '*',
@@ -151,10 +158,11 @@ async function startWorkerLoop(): Promise<void> {
               'tenantId', tenantId,
               'status', scoringResult.status,
               'fraudScore', scoringResult.fraudScore.toString(),
-              'graphHops', graph.graphHops.toString(),
-              'fraudRingIds', JSON.stringify(graph.fraudRingIds),
+              'graphHops', (graph.graphHops ?? 0).toString(),
+              'fraudRingIds', JSON.stringify(ringIds),
               'velocity', JSON.stringify(velocity),
               'modelVersion', scoringResult.modelVersion,
+              'topDrivers', JSON.stringify(scoringResult.topDrivers || []),
               'payload', JSON.stringify(txPayload),
               'timestamp', new Date().toISOString()
             );

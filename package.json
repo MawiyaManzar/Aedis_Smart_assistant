@@ -1,0 +1,25 @@
+{
+  "name": "aedis-smart-assistant",
+  "version": "1.0.0",
+  "description": "Aedis Real-Time Sub-50ms Risk Intelligence Architecture",
+  "type": "module",
+  "scripts": {
+    "dev:gateway": "cd services/api-gateway && npm run dev",
+    "dev:fraud": "cd services/fraud-worker && npm run dev",
+    "dev:explain": "cd services/explain-worker && npm run dev",
+    "dev:policy": "cd services/policy-engine && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "test": "npm run test:gateway && npm run test:fraud && npm run test:explain && npm run test:policy",
+    "test:gateway": "cd services/api-gateway && npm test",
+    "test:fraud": "cd services/fraud-worker && npm test",
+    "test:explain": "cd services/explain-worker && npm test",
+    "test:policy": "cd services/policy-engine && npm test",
+    "demo:scam-ring": "tsx scripts/demo-scam-ring.ts",
+    "demo:loan-distress": "tsx scripts/demo-loan-distress.ts"
+  },
+  "devDependencies": {
+    "ioredis": "^6.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

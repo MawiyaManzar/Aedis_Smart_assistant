@@ -178,6 +178,36 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
 
 export const INITIAL_BORROWER_DISTRESS: BorrowerDistress[] = [
   {
+    id: "BORROWER-SME-0418",
+    borrowerName: "David Al-Mansoor (Al-Mansoor Enterprises)",
+    loanId: "LN-COMM-418-FACILITY",
+    principalAmount: 320000,
+    monthlyEmi: 18400,
+    nextEmiDate: "2026-10-12",
+    distressScore: 78,
+    riskLevel: "HIGH",
+    cashReservesDropPct: 82,
+    atmWithdrawalMultiplier: 4.0,
+    newHighInterestSpikes: 3,
+    lightGbmConfidence: 0.94,
+    status: "CRITICAL_DISTRESS",
+    shapDrivers: [
+      { feature: "cash_reserves_drop", impact: 44, description: "Cash reserves dropped 82% over 14 days" },
+      { feature: "atm_spikes", impact: 28, description: "ATM cash-out withdrawals spiked 4x above baseline" },
+      { feature: "revenue_stagnation", impact: 18, description: "Merchant receivables down 35% MoM" }
+    ],
+    nlpExplanation: "Default risk 78%: Cash reserves dropped 82% over 14 days and ATM withdrawals spiked 4x.",
+    recommendedAction: "Dispatch Automated Restructuring Playbook #3 (3-month interest-only moratorium offer via WhatsApp/SMS).",
+    cashFlowHistory: [
+      { day: "Day 1", balance: 210000, withdrawals: 5000 },
+      { day: "Day 3", balance: 175000, withdrawals: 12000 },
+      { day: "Day 6", balance: 120000, withdrawals: 25000 },
+      { day: "Day 9", balance: 80000, withdrawals: 32000 },
+      { day: "Day 12", balance: 45000, withdrawals: 28000 },
+      { day: "Day 14", balance: 37800, withdrawals: 14000 }
+    ]
+  },
+  {
     id: "BOR-CRD-501",
     borrowerName: "Ahmed Radwan",
     loanId: "LN-SME-7892-METRO",
@@ -270,6 +300,9 @@ export const INITIAL_BORROWER_DISTRESS: BorrowerDistress[] = [
 ];
 
 export const INITIAL_GRAPH_NODES: GraphNode[] = [
+  { id: "acc_victim_david_882", label: "David Al-Mansoor (Target)", type: "ACCOUNT", riskScore: 94, x: 100, y: 100, details: "Wiped $48,500 after 3 micro-probes" },
+  { id: "acc_mule_ring_delta", label: "Alpha Mule Ring Delta", type: "MULE", riskScore: 97, x: 260, y: 70, details: "Target of $48.5k exfiltration" },
+  { id: "DEV-ROOTED-89X", label: "Device ROOTED-89X", type: "DEVICE", riskScore: 92, x: 160, y: 220, details: "Rooted Android Kernel Signature" },
   { id: "ACC-US-481903", label: "Tariq Al-Mansoor (Victim)", type: "ACCOUNT", riskScore: 87, x: 120, y: 180, details: "Wiped $142,000 in 8 mins" },
   { id: "ACC-US-990142", label: "Apex Shell Holdings", type: "MULE", riskScore: 94, x: 280, y: 120, details: "Mule Ring Primary Hub" },
   { id: "DEV-HW-8812A", label: "Device HW-8812A", type: "DEVICE", riskScore: 89, x: 180, y: 320, details: "Hardware ID linked to 3 accounts" },
@@ -281,6 +314,9 @@ export const INITIAL_GRAPH_NODES: GraphNode[] = [
 ];
 
 export const INITIAL_GRAPH_LINKS: GraphLink[] = [
+  { source: "acc_victim_david_882", target: "acc_mule_ring_delta", label: "Wipeout: $48,500 (Mobile)", isHighRisk: true },
+  { source: "acc_victim_david_882", target: "DEV-ROOTED-89X", label: "Infiltration Device", isHighRisk: true },
+  { source: "acc_mule_ring_delta", target: "ACC-US-990142", label: "Hop 2: Ring Aggregation", isHighRisk: true },
   { source: "ACC-US-481903", target: "ACC-US-990142", label: "TX: $142,000 (8m)", isHighRisk: true },
   { source: "ACC-US-481903", target: "DEV-HW-8812A", label: "Shared Device Fingerprint", isHighRisk: true },
   { source: "DEV-HW-8812A", target: "IP-197.34.12.89", label: "Session IP Binding", isHighRisk: false },

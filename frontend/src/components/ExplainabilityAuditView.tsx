@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { AuditRecord } from "@/lib/types";
+import React, { useState, useEffect } from "react";
+import { AuditRecord, StreamAuditLog } from "@/lib/types";
+import { fetchLatestAuditLogs } from "@/lib/authApi";
 
 interface ExplainabilityAuditViewProps {
   auditLogs: AuditRecord[];
@@ -10,15 +11,61 @@ interface ExplainabilityAuditViewProps {
 export const ExplainabilityAuditView: React.FC<ExplainabilityAuditViewProps> = ({
   auditLogs,
 }) => {
-  const [selectedRecordId, setSelectedRecordId] = useState<string>(auditLogs[0].id);
+  const [logs, setLogs] = useState<AuditRecord[]>(auditLogs);
+  const [selectedRecordId, setSelectedRecordId] = useState<string>(auditLogs[0]?.id || "");
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-  const selectedRecord = auditLogs.find((r) => r.id === selectedRecordId) || auditLogs[0];
+  const selectedRecord = logs.find((r) => r.id === selectedRecordId) || logs[0];
 
   const handleExportDossier = () => {
     setCopiedNotification(true);
     setTimeout(() => setCopiedNotification(false), 2500);
   };
+
+  const handleSyncStreamLogs = async () => {
+    setIsSyncing(true);
+    try {
+      const streamLogs: StreamAuditLog[] = await fetchLatestAuditLogs(15);
+      if (streamLogs && streamLogs.length > 0) {
+        const converted: AuditRecord[] = streamLogs.map((l) => ({
+          id: l.alertId || `AUDIT-${l.streamEntryId}`,
+          txOrLoanId: l.transactionId || `TX-${l.streamEntryId}`,
+          timestamp: (l.timestamp || new Date().toISOString()).replace("T", " ").substring(0, 19),
+          analyst: `AI_COMPLIANCE_WORKER (${l.llmModel || "deterministic-template"})`,
+          actionTaken: l.status === "BLOCKED" ? "HARD_ESCROW_FREEZE" : "STEP_UP_FLAGGED",
+          previousStatus: "STREAM_RAW",
+          newStatus: l.status,
+          shapDigest: `SHAP [Risk: ${Math.round(parseFloat(l.fraudScore || "0.5") * 100)}/100, Top: ${l.shapDrivers?.[0]?.label || "Anomaly"}]`,
+          nlpSummary: l.auditSummary || "Standard compliance evaluation.",
+          guardrailsHash: `0x${(l.streamEntryId || "E89A").replace("-", "").slice(0, 8).toUpperCase()}`,
+          immutableBlock: `#Stream-${l.streamEntryId || "0"}`,
+        }));
+
+        setLogs((prev) => {
+          const seen = new Set<string>();
+          const deduped: AuditRecord[] = [];
+          for (const r of [...converted, ...prev]) {
+            if (!seen.has(r.id)) {
+              seen.add(r.id);
+              deduped.push(r);
+            }
+          }
+          if (deduped.length > 0) {
+            setSelectedRecordId(deduped[0].id);
+          }
+          return deduped;
+        });
+      }
+    } catch (_err) {
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    handleSyncStreamLogs();
+  }, []);
 
   return (
     <div className="w-full flex flex-col gap-8 text-[#141413]">
@@ -34,14 +81,21 @@ export const ExplainabilityAuditView: React.FC<ExplainabilityAuditViewProps> = (
             </span>
           </div>
           <p className="text-sm text-[#141413]/70 mt-2 font-medium leading-relaxed">
-            Every transaction and credit evaluation translates raw mathematical SHAP weights into regulator-ready English summaries through bounded LangGraph workers and stores them in an immutable ledger.
+            Every transaction and credit evaluation translates raw mathematical SHAP weights into regulator-ready English summaries through bounded LangGraph workers and stores them in an immutable ledger (stream:audit:logged).
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSyncStreamLogs}
+            disabled={isSyncing}
+            className="px-4 py-3 bg-[#FAF7F2] text-[#141413] border-2 border-[#141413] font-bold text-xs uppercase hover:bg-[#141413] hover:text-white cursor-pointer"
+          >
+            {isSyncing ? "[ SYNCING STREAM... ]" : "[ 🔄 SYNC REDIS AUDIT STREAM ]"}
+          </button>
           <button
             onClick={handleExportDossier}
-            className="px-5 py-3 bg-[#141413] text-[#FFFFFF] border-2 border-[#141413] font-bold text-xs uppercase hover:bg-[#FFFFFF] hover:text-[#141413] cursor-pointer"
+            className="px-5 py-3 bg-[#141413] text-[#FFFFFF] border-2 border-[#141413] font-bold text-xs uppercase hover:bg-[#C86432] cursor-pointer"
           >
             {copiedNotification ? "[✓ DOSSIER EXPORTED]" : "[ EXPORT REGULATOR DOSSIER ]"}
           </button>
@@ -76,11 +130,11 @@ export const ExplainabilityAuditView: React.FC<ExplainabilityAuditViewProps> = (
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#141413]/20">
-                  {auditLogs.map((log) => {
-                    const isSelected = log.id === selectedRecord.id;
+                  {logs.map((log, idx) => {
+                    const isSelected = log.id === selectedRecord?.id;
                     return (
                       <tr
-                        key={log.id}
+                        key={`audit-${log.id}-${idx}`}
                         onClick={() => setSelectedRecordId(log.id)}
                         className={`cursor-pointer transition-none ${
                           isSelected

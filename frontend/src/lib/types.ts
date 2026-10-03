@@ -99,9 +99,13 @@ export interface TelemetryData {
     rawStreamLength: number;
     alertStreamLength: number;
     resolutionStreamLength: number;
+    interventionStreamLength?: number;
+    auditStreamLength?: number;
     redisStatus: string;
     rawStream: string;
     alertStream: string;
+    interventionStream?: string;
+    auditStream?: string;
   };
   slo: {
     targetLatencyMs: number;
@@ -109,6 +113,84 @@ export interface TelemetryData {
     graphHopTimeoutMs: number;
     mlInferenceTimeoutMs: number;
   };
+  timestamp: string;
+}
+
+export type PolicyAction =
+  | 'sms_otp'
+  | 'whatsapp_otp'
+  | 'freeze_escrow'
+  | 'in_app_nudge'
+  | 'crm_task'
+  | 'crm_call'
+  | 'soft_hold'
+  | 'analyst_dashboard';
+
+export interface PolicyRule {
+  actions: PolicyAction[];
+  ttl_seconds?: number;
+  on_failure?: string;
+  notify?: string[];
+}
+
+export interface PolicyMatrix {
+  version: string;
+  updatedAt: string;
+  thresholds?: {
+    lowThreshold: number;
+    stepUpThreshold: number;
+    freezeThreshold: number;
+  };
+  fraud: {
+    FLAGGED: PolicyRule;
+    BLOCKED: PolicyRule;
+  };
+  distress?: {
+    MEDIUM?: PolicyRule;
+    HIGH?: PolicyRule;
+    CRITICAL?: PolicyRule;
+  };
+}
+
+export interface DispatchedWebhookResult {
+  action: PolicyAction;
+  target: string;
+  status: 'SUCCESS' | 'FAILED';
+  referenceId: string;
+  durationMs: number;
+  metadata?: Record<string, any>;
+}
+
+export interface DispatchedInterventionEvent {
+  streamEntryId: string;
+  interventionId: string;
+  alertId: string;
+  transactionId: string;
+  tenantId: string;
+  status: 'FLAGGED' | 'BLOCKED';
+  stateTransition: 'STEP_UP_SENT' | 'BLOCKED_HELD';
+  actionsDispatched: PolicyAction[];
+  results: DispatchedWebhookResult[];
+  timestamp: string;
+}
+
+export interface StreamAuditLog {
+  streamEntryId: string;
+  alertId: string;
+  transactionId: string;
+  tenantId: string;
+  status: string;
+  fraudScore: string;
+  auditSummary: string;
+  shapDrivers: Array<{
+    feature: string;
+    label: string;
+    value: number;
+    direction: string;
+    magnitude: number;
+    impactPercent: number;
+  }>;
+  llmModel: string;
   timestamp: string;
 }
 

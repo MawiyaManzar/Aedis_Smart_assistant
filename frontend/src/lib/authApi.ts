@@ -369,3 +369,104 @@ export function convertAlertToTransaction(alert: any): Transaction {
   };
 }
 
+/**
+ * Fetch current active graduated intervention policy matrix
+ */
+export async function fetchActivePolicyMatrix() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/policy`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.policy || null;
+  } catch (err) {
+    console.warn('Failed to fetch active policy matrix:', err);
+    return null;
+  }
+}
+
+/**
+ * Updates policy matrix and triggers real-time hot reload via channel:policy:reload
+ */
+export async function updatePolicyMatrix(policyMatrix: any, token?: string) {
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/v1/policy`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(policyMatrix),
+    });
+
+    return await res.json();
+  } catch (err) {
+    console.error('Failed to update policy matrix:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch latest dispatched interventions from stream:intervention:dispatched
+ */
+export async function fetchLatestInterventions(count = 20) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/interventions?count=${count}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.interventions || [];
+  } catch (err) {
+    console.warn('Failed to fetch interventions from backend:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch latest explainability audit records from stream:audit:logged
+ */
+export async function fetchLatestAuditLogs(count = 20) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/audit/logs?count=${count}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.auditLogs || [];
+  } catch (err) {
+    console.warn('Failed to fetch audit logs from backend:', err);
+    return [];
+  }
+}
+
+/**
+ * Trigger synthetic mule ring and scam attack simulation (scripts/demo-scam-ring.ts)
+ */
+export async function triggerDemoScamRing() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/demo/scam-ring`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return await res.json();
+  } catch (err) {
+    console.error('Failed to trigger scam ring demo:', err);
+    return null;
+  }
+}
+
+/**
+ * Trigger early loan distress and SHAP compliance simulation (scripts/demo-loan-distress.ts)
+ */
+export async function triggerDemoLoanDistress() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/demo/loan-distress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return await res.json();
+  } catch (err) {
+    console.error('Failed to trigger loan distress demo:', err);
+    return null;
+  }
+}
+
+

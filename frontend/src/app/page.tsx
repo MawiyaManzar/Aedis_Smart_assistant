@@ -24,6 +24,8 @@ import {
   fetchLatestBackendAlerts,
   resolveBackendAlert,
   convertAlertToTransaction,
+  triggerDemoScamRing,
+  triggerDemoLoanDistress,
 } from "@/lib/authApi";
 
 export default function Home() {
@@ -228,30 +230,60 @@ export default function Home() {
   };
 
   // Sync live alerts directly from backend Redis stream:alert:created
-  const handleSyncBackendAlerts = async () => {
-    setIsBackendSyncing(true);
+  const handleSyncBackendAlerts = async (silent = false) => {
+    if (!silent) setIsBackendSyncing(true);
     try {
       const rawAlerts = await fetchLatestBackendAlerts(20);
       if (rawAlerts && rawAlerts.length > 0) {
         const streamTxs = rawAlerts.map(convertAlertToTransaction);
         setTransactions((prev) => {
-          const existingIds = new Set(prev.map((t) => t.id));
-          const newTxs = streamTxs.filter((t) => !existingIds.has(t.id));
-          if (newTxs.length > 0) {
-            setSelectedTx(newTxs[0]);
+          const seen = new Set<string>();
+          const deduped: Transaction[] = [];
+
+          // Live stream alerts take top priority, strictly deduplicated
+          for (const tx of streamTxs) {
+            const key = tx.alertId ? `${tx.id}-${tx.alertId}` : tx.id;
+            if (!seen.has(key)) {
+              seen.add(key);
+              deduped.push(tx);
+            }
           }
-          return [...newTxs, ...prev].slice(0, 30);
+
+          // Retain prior transactions that haven't been replaced
+          for (const tx of prev) {
+            const key = tx.alertId ? `${tx.id}-${tx.alertId}` : tx.id;
+            if (!seen.has(key) && !seen.has(tx.id)) {
+              seen.add(key);
+              seen.add(tx.id);
+              deduped.push(tx);
+            }
+          }
+
+          if (deduped.length > 0 && !selectedTx) {
+            setSelectedTx(deduped[0]);
+          }
+          return deduped.slice(0, 30);
         });
-        showToast(`✓ INGESTED ${rawAlerts.length} ALERTS FROM REDIS STREAM (SUB-50MS SLO)`);
-      } else {
+        if (!silent) showToast(`✓ INGESTED ${rawAlerts.length} ALERTS FROM REDIS STREAM (SUB-50MS SLO)`);
+      } else if (!silent) {
         showToast("ℹ NO NEW ALERTS IN REDIS STREAM (SYSTEM NOMINAL)");
       }
     } catch {
-      showToast("⚠️ FAILED TO SYNC BACKEND REDIS ALERTS");
+      if (!silent) showToast("⚠️ FAILED TO SYNC BACKEND REDIS ALERTS");
     } finally {
-      setIsBackendSyncing(false);
+      if (!silent) setIsBackendSyncing(false);
     }
   };
+
+  // Continuous background synchronization with Redis Stream (Zero-Reload Live Stream)
+  useEffect(() => {
+    if (!isStreaming) return;
+    handleSyncBackendAlerts(true);
+    const interval = setInterval(() => {
+      handleSyncBackendAlerts(true);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [isStreaming]);
 
   // Handle triggering credit playbook
   const handleTriggerPlaybook = (borrowerId: string, playbook: string) => {
@@ -364,6 +396,34 @@ export default function Home() {
     ).catch(() => {});
   };
 
+  // Run backend demo scripts via API Gateway
+  const handleRunScamRingDemo = async () => {
+    showToast("🚨 EXECUTING SYNTHETIC MULE RING ATTACK (scripts/demo-scam-ring.ts)...");
+    try {
+      const res = await triggerDemoScamRing();
+      if (res?.success) {
+        showToast(`🛑 SCAM BURST INGESTED: $${res.wipeoutAmount.toLocaleString()} to ${res.muleAccount}`);
+        setActiveRole("SENTINEL");
+        setTimeout(handleSyncBackendAlerts, 400);
+      }
+    } catch {
+      showToast("⚠️ FAILED TO TRIGGER DEMO SCAM RING");
+    }
+  };
+
+  const handleRunLoanDistressDemo = async () => {
+    showToast("📊 INJECTING LOAN DISTRESS SHAP (scripts/demo-loan-distress.ts)...");
+    try {
+      const res = await triggerDemoLoanDistress();
+      if (res?.success) {
+        showToast(`✓ LOAN DISTRESS EMITTED: ${res.borrowerId} [SCORE: ${res.distressScore}/100]`);
+        setActiveRole("CREDIT");
+      }
+    } catch {
+      showToast("⚠️ FAILED TO TRIGGER LOAN DISTRESS DEMO");
+    }
+  };
+
   const blockedCount = transactions.filter((t) => t.status === "BLOCKED").length;
 
   // If user is unauthenticated and hasn't explicitly chosen demo mode, show Gateway Login portal
@@ -431,6 +491,8 @@ export default function Home() {
         isStreaming={isStreaming}
         setIsStreaming={setIsStreaming}
         triggerMockEvent={handleTriggerMockEvent}
+        onRunScamRingDemo={handleRunScamRingDemo}
+        onRunLoanDistressDemo={handleRunLoanDistressDemo}
         mobileOpen={mobileMenuOpen}
         setMobileOpen={setMobileMenuOpen}
       />

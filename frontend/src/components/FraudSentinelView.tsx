@@ -142,13 +142,13 @@ export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#141413]/20">
-                  {filteredTransactions.map((tx) => {
+                  {filteredTransactions.map((tx, idx) => {
                     const isSelected = currentTx?.id === tx.id;
                     const isCritical = tx.riskScore >= 75;
 
                     return (
                       <tr
-                        key={tx.id}
+                        key={tx.alertId ? `tx-${tx.id}-${tx.alertId}` : `tx-${tx.id}-${idx}`}
                         onClick={() => {
                           onSelectTx(tx);
                           setSelectedNodeId(tx.sender.account);
@@ -413,9 +413,16 @@ export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
 
             {/* Authenticated Intervention Actions */}
             <div className="border-t-2 border-[#141413] pt-4 flex flex-col gap-2.5">
-              <span className="text-xs text-[#141413]/60 block uppercase font-bold tracking-wider">
-                GRADUATED INTERVENTION ACTIONS:
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#141413]/60 block uppercase font-bold tracking-wider">
+                  GRADUATED INTERVENTION ACTIONS:
+                </span>
+                {currentTx.alertId && (
+                  <span className="text-[10px] bg-[#C86432] text-white font-mono font-bold px-1.5 py-0.2 uppercase">
+                    AUTO: {currentTx.status === "BLOCKED" ? "FREEZE_ESCROW" : "SMS_OTP"} (DISPATCHED)
+                  </span>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <button
                   onClick={() => onUpdateTxStatus(currentTx.id, "BLOCKED", "ESCROW_FREEZE")}

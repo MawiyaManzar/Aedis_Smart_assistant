@@ -7,6 +7,11 @@ import { transactionRoutes } from './routes/transactions.js';
 import { alertRoutes } from './routes/alerts.js';
 import { featureRoutes } from './routes/features.js';
 import { telemetryRoutes } from './routes/telemetry.js';
+import { policyRoutes } from './routes/policy.js';
+import { interventionRoutes } from './routes/interventions.js';
+import { auditRoutes } from './routes/audit.js';
+import { demoRoutes } from './routes/demo.js';
+import { dashboardRoutes } from './routes/dashboard.js';
 
 /**
  * App factory: Allows in-memory injection testing (zero network overhead in vitest)
@@ -45,6 +50,11 @@ export function buildApp(opts = {}): FastifyInstance {
   app.register(alertRoutes, { prefix: '/v1/alerts' });
   app.register(featureRoutes, { prefix: '/v1/features' });
   app.register(telemetryRoutes, { prefix: '/v1/telemetry' });
+  app.register(policyRoutes, { prefix: '/v1/policy' });
+  app.register(interventionRoutes, { prefix: '/v1/interventions' });
+  app.register(auditRoutes, { prefix: '/v1/audit' });
+  app.register(demoRoutes, { prefix: '/v1/demo' });
+  app.register(dashboardRoutes, { prefix: '/v1/dashboard' });
 
 
   return app;
