@@ -16,7 +16,8 @@ target_metadata = None
 
 
 def database_url() -> str:
-    url = os.environ.get("DATABASE_URL")
+    # Migrations run as the schema owner; the service itself uses the restricted aedis_app role.
+    url = os.environ.get("MIGRATION_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if url:
         return url
     configured = config.get_main_option("sqlalchemy.url")

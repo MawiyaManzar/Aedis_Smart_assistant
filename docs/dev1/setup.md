@@ -139,7 +139,14 @@ $env:DATABASE_URL = "postgresql+psycopg://aedis_admin:aedis_password@localhost:5
 uv run alembic upgrade head
 ```
 
-A fresh Compose volume already applied `init.sql`, so this stamps revision `001_initial` without recreating tables.
+A fresh Compose volume already applied `init.sql`, so revision `001_initial` is a no-op there. Revision `002_integrity` is **required** on every database: it adds tenant-scoped foreign keys, the `fraud_events.resolution` check, the `model_versions` registry, the TRUNCATE guard on `audit_log`, and the restricted `aedis_app` login role.
+
+Roles:
+
+- `aedis_admin` (schema owner) runs migrations. Set `MIGRATION_DATABASE_URL` for it.
+- `aedis_app` is what the service uses (`DATABASE_URL`). It has DML on business tables but only `SELECT`/`INSERT` on `audit_log`. Its password comes from `AEDIS_APP_PASSWORD`.
+
+Integration tests (need the stack and `uv run alembic upgrade head`) live in `tests/integration`. They skip when Postgres is unreachable; set `AEDIS_REQUIRE_INTEGRATION=1` to make that a failure. They run inside rolled-back transactions and never write permanent rows (audit rows cannot be deleted).
 
 ## Model artifacts
 
