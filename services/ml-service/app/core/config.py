@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "aedis_password"
     readiness_timeout_seconds: float = 2.0
+    graph_query_timeout_seconds: float = 0.5
 
     artifacts_dir: Path = SERVICE_ROOT / "artifacts"
     fraud_model_version: str = "fraud-v1"

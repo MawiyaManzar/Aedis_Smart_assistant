@@ -15,6 +15,7 @@ from sqlalchemy import Engine, create_engine
 from app.core.config import Settings
 from app.explainability.shap_explainer import ShapExplainService
 from app.graph.client import GraphClient
+from app.graph.queries import GraphEnricher
 from app.graph.service import GraphSyncService
 from app.inference.distress import DistressInferenceService
 from app.inference.fraud import FraudInferenceService
@@ -50,6 +51,7 @@ class ServiceContainer:
             connection_timeout=settings.readiness_timeout_seconds,
         )
         self.graph_sync = GraphSyncService(self.graph)
+        self.graph_enricher = GraphEnricher(self.graph, settings.graph_query_timeout_seconds)
         self.fraud_loader = OnnxFraudModelLoader(
             settings.artifacts_dir, settings.fraud_model_version
         )
@@ -66,6 +68,7 @@ class ServiceContainer:
 
     def load_models(self) -> None:
         """Load every model once. Missing artifacts abort startup only if required."""
+        self.graph_enricher.warm_up()
         for loader in self.loaders:
             try:
                 loader.load()
