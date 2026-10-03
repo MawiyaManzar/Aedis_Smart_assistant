@@ -1,3 +1,6 @@
+from pathlib import Path
+
+
 def test_core_imports() -> None:
     import lightgbm
     import numpy
@@ -24,5 +27,5 @@ def test_core_imports() -> None:
     assert sklearn.__version__
     assert FraudFeatureBuilder.feature_names
     assert DistressFeatureBuilder.feature_names
-    assert OnnxFraudModelLoader(None).is_loaded is False
-    assert LightGbmDistressModelLoader(None).is_loaded is False
+    assert OnnxFraudModelLoader(Path("x"), "fraud-v1").is_loaded is False
+    assert LightGbmDistressModelLoader(Path("x"), "distress-v1").is_loaded is False

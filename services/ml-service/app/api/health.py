@@ -1,15 +1,17 @@
 """Liveness, readiness, and version endpoints."""
 
 import platform
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
-from app.core.config import get_settings
+from app.core.container import ServiceContainer, get_container
 from app.core.readiness import neo4j_ready, postgres_ready, redis_ready
 
 router = APIRouter(tags=["health"])
+
+Container = Annotated[ServiceContainer, Depends(get_container)]
 
 
 class HealthResponse(BaseModel):
@@ -17,48 +19,56 @@ class HealthResponse(BaseModel):
     service: str
 
 
+class ModelStatusResponse(BaseModel):
+    name: str
+    version: str
+    loaded: bool
+    error: str | None = None
+
+
 class ReadyResponse(BaseModel):
     status: Literal["ok", "degraded"]
     postgres: bool
     redis: bool
     neo4j: bool
+    models: list[ModelStatusResponse]
 
 
 class VersionResponse(BaseModel):
     service: str
     version: str
     python: str
-    inference_mode: Literal["stub"]
+    models: list[ModelStatusResponse]
 
 
 @router.get("/health", response_model=HealthResponse)
-def health() -> HealthResponse:
-    settings = get_settings()
-    return HealthResponse(status="ok", service=settings.service_name)
+def health(container: Container) -> HealthResponse:
+    return HealthResponse(status="ok", service=container.settings.service_name)
 
 
 @router.get("/health/ready", response_model=ReadyResponse)
-def ready(response: Response) -> ReadyResponse:
-    settings = get_settings()
-    postgres = postgres_ready(settings)
-    redis = redis_ready(settings)
-    neo4j = neo4j_ready(settings)
-    if not (postgres and redis and neo4j):
+def ready(response: Response, container: Container) -> ReadyResponse:
+    postgres = postgres_ready(container)
+    redis = redis_ready(container)
+    neo4j = neo4j_ready(container)
+    models = [ModelStatusResponse(**vars(s)) for s in container.model_statuses()]
+    healthy = postgres and redis and neo4j and all(m.loaded for m in models)
+    if not healthy:
         response.status_code = 503
     return ReadyResponse(
-        status="ok" if postgres and redis and neo4j else "degraded",
+        status="ok" if healthy else "degraded",
         postgres=postgres,
         redis=redis,
         neo4j=neo4j,
+        models=models,
     )
 
 
 @router.get("/version", response_model=VersionResponse)
-def version() -> VersionResponse:
-    settings = get_settings()
+def version(container: Container) -> VersionResponse:
     return VersionResponse(
-        service=settings.service_name,
-        version=settings.service_version,
+        service=container.settings.service_name,
+        version=container.settings.service_version,
         python=platform.python_version(),
-        inference_mode="stub",
+        models=[ModelStatusResponse(**vars(s)) for s in container.model_statuses()],
     )

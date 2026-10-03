@@ -5,11 +5,9 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.constants import DISTRESS_STUB_DETAIL, FRAUD_STUB_DETAIL, SHAP_STUB_DETAIL
 from app.db.sql_script import split_sql
 from app.features.distress import DistressFeatureBuilder
 from app.features.fraud import FraudFeatureBuilder
-from app.models.loaders import OnnxFraudModelLoader
 from app.schemas.features import (
     DistressFeatures,
     DistressFeatureSource,
@@ -18,7 +16,6 @@ from app.schemas.features import (
 )
 
 TRANSACTION_ID = "8b0b0d0e-6c1a-4f0a-9c2d-1a2b3c4d5e6f"
-TENANT_ID = "11111111-1111-1111-1111-111111111111"
 BORROWER_ID = "22222222-2222-2222-2222-222222222222"
 
 FRAUD_FEATURES = {
@@ -70,7 +67,7 @@ def test_distress_feature_names() -> None:
 
 def test_feature_builders_are_not_implemented() -> None:
     fraud_source = FraudFeatureSource(
-        tenant_id=UUID(TENANT_ID),
+        tenant_id=UUID("11111111-1111-1111-1111-111111111111"),
         transaction_id=UUID(TRANSACTION_ID),
         amount=10,
         currency="USD",
@@ -93,36 +90,7 @@ def test_feature_builders_are_not_implemented() -> None:
         DistressFeatureBuilder().build(distress_source)
 
 
-def test_loader_does_not_mark_weights_loaded() -> None:
-    loader = OnnxFraudModelLoader("models/fraud.onnx")
-    loader.load()
-    assert loader.is_loaded is False
-
-
-def test_fraud_score_stub(client: TestClient) -> None:
-    response = client.post(
-        "/v1/models/fraud/score",
-        json={
-            "transaction_id": TRANSACTION_ID,
-            "tenant_id": TENANT_ID,
-            "features": FRAUD_FEATURES,
-        },
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["inference_mode"] == "stub"
-    assert body["model_version"] == "unset"
-    assert body["fraud_probability"] is None
-    assert body["status"] is None
-    assert body["detail"] == FRAUD_STUB_DETAIL
-
-
-def test_fraud_score_rejects_invalid_payload(client: TestClient) -> None:
-    response = client.post("/v1/models/fraud/score", json={"transaction_id": "not-a-uuid"})
-    assert response.status_code == 422
-
-
-def test_distress_batch_stub(client: TestClient) -> None:
+def test_distress_without_model_is_503(client: TestClient) -> None:
     response = client.post(
         "/v1/models/distress/score-batch",
         json={
@@ -130,14 +98,8 @@ def test_distress_batch_stub(client: TestClient) -> None:
             "borrowers": [{"borrower_id": BORROWER_ID, "features": DISTRESS_FEATURES}],
         },
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["inference_mode"] == "stub"
-    assert body["model_version"] == "unset"
-    assert body["scores"] == [
-        {"borrower_id": BORROWER_ID, "distress_score": None, "risk_band": None}
-    ]
-    assert body["detail"] == DISTRESS_STUB_DETAIL
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "MODEL_NOT_LOADED"
 
 
 def test_distress_batch_rejects_empty_list(client: TestClient) -> None:
@@ -148,7 +110,7 @@ def test_distress_batch_rejects_empty_list(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_shap_stub(client: TestClient) -> None:
+def test_shap_without_model_is_503(client: TestClient) -> None:
     response = client.post(
         "/v1/models/explain/shap",
         json={
@@ -159,18 +121,12 @@ def test_shap_stub(client: TestClient) -> None:
             "top_n": 3,
         },
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["inference_mode"] == "stub"
-    assert body["model_version"] == "unset"
-    assert body["top_drivers"] == []
-    assert body["detail"] == SHAP_STUB_DETAIL
+    assert response.status_code == 503
 
 
 def test_schema_sql_splits_and_names_required_tables() -> None:
     sql_path = Path(__file__).resolve().parents[3] / "infra" / "postgres" / "init.sql"
-    script = sql_path.read_text(encoding="utf-8")
-    statements = split_sql(script)
+    statements = split_sql(sql_path.read_text(encoding="utf-8"))
     joined = "\n".join(statements)
     for table in (
         "tenants",

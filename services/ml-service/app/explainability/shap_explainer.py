@@ -1,24 +1,18 @@
-"""SHAP explainer boundary."""
+"""SHAP explainer service boundary."""
 
-import time
+from __future__ import annotations
 
-from app.core.constants import SHAP_STUB_DETAIL, UNSET_MODEL_VERSION
+from app.core.errors import ModelNotLoadedError
+from app.models.loaders import ModelLoader
 from app.schemas.explain import DistressExplainRequest, FraudExplainRequest, ShapExplainResponse
 
 
 class ShapExplainService:
-    """Returns a marked stub until TreeExplainer is implemented."""
+    def __init__(self, fraud_loader: ModelLoader, distress_loader: ModelLoader) -> None:
+        self._loaders = {"fraud": fraud_loader, "distress": distress_loader}
 
     def explain(self, request: FraudExplainRequest | DistressExplainRequest) -> ShapExplainResponse:
-        started = time.perf_counter()
-        elapsed_ms = (time.perf_counter() - started) * 1000
-        return ShapExplainResponse(
-            entity_type=request.entity_type,
-            entity_id=request.entity_id,
-            model_name=request.model_name,
-            model_version=UNSET_MODEL_VERSION,
-            inference_mode="stub",
-            top_drivers=[],
-            latency_ms=round(elapsed_ms, 3),
-            detail=SHAP_STUB_DETAIL,
-        )
+        loader = self._loaders[request.model_name]
+        if not loader.is_loaded:
+            raise ModelNotLoadedError(f"{request.model_name} model is not loaded")
+        raise NotImplementedError("SHAP is implemented in the explainability milestone")

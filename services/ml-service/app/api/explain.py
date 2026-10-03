@@ -2,10 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import Field
 
-from app.core.container import get_container
+from app.core.container import ServiceContainer, get_container
 from app.schemas.explain import DistressExplainRequest, FraudExplainRequest, ShapExplainResponse
 
 router = APIRouter(prefix="/models/explain", tags=["explain"])
@@ -17,5 +17,6 @@ def explain_shap(
         FraudExplainRequest | DistressExplainRequest,
         Field(discriminator="model_name"),
     ],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> ShapExplainResponse:
-    return get_container().explainer.explain(body)
+    return container.explainer.explain(body)
