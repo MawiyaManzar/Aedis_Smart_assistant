@@ -120,9 +120,11 @@ def test_loader_reads_metadata_and_checks_version(artifact_dir: Path) -> None:
     loader = OnnxFraudModelLoader(artifact_dir, "fraud-v1")
     with pytest.raises(ModelArtifactError, match="does not match"):
         loader.load()
+    # Right version but no usable weights/feature list: must fail, never "load" silently.
     (model_dir / "metadata.json").write_text(json.dumps({"model_version": "fraud-v1"}))
-    loader.load()
-    assert loader.is_loaded
+    with pytest.raises(ModelArtifactError, match="feature_list"):
+        loader.load()
+    assert not loader.is_loaded
 
 
 def test_require_models_aborts_startup_when_artifact_missing(tmp_path: Path) -> None:

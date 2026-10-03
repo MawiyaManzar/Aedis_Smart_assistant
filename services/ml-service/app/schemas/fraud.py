@@ -1,11 +1,14 @@
 """Fraud scoring HTTP contract."""
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import FraudStatus, InferenceMode
+from app.schemas.common import FraudStatus
 from app.schemas.features import FraudFeatures
+
+GraphStatus = Literal["OK", "DEGRADED"]
 
 
 class FraudScoreRequest(BaseModel):
@@ -16,9 +19,13 @@ class FraudScoreRequest(BaseModel):
 
 class FraudScoreResponse(BaseModel):
     transaction_id: UUID
-    model_version: str = Field(description="unset until a real ONNX artifact is loaded")
-    inference_mode: InferenceMode
-    fraud_probability: float | None = Field(description="Null while inference is a contract stub")
-    status: FraudStatus | None
-    latency_ms: float = Field(description="Handler elapsed time, not a model benchmark")
-    detail: str
+    model_version: str
+    feature_version: str
+    fraud_probability: float = Field(ge=0.0, le=1.0)
+    status: FraudStatus
+    graph_status: GraphStatus = Field(
+        description="DEGRADED when graph_hops was unavailable (-1); score is then less reliable"
+    )
+    inference_latency_ms: float = Field(
+        description="Measured ONNX Runtime session.run time for this request, in milliseconds"
+    )

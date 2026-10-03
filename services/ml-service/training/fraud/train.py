@@ -31,6 +31,7 @@ from app.core.config import SERVICE_ROOT
 from app.features.fraud import FRAUD_FEATURE_ORDER, FraudFeatureBuilder, to_vector
 from app.features.history import InMemoryHistoryProvider
 from training.fraud.data import LabeledEvent, generate
+from training.fraud.export_onnx import PARITY_TOLERANCE, check_parity, export_onnx
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +164,16 @@ def write_artifact(
 ) -> Path:
     directory = out / MODEL_NAME / MODEL_VERSION
     directory.mkdir(parents=True, exist_ok=True)
-    model.get_booster().save_model(directory / "model.json")
+    # Early stopping keeps trailing trees after the best iteration; predict_proba (and the ONNX
+    # export) ignore them, so drop them to keep model.json (used by SHAP) identical to serving.
+    model.get_booster()[: int(model.best_iteration) + 1].save_model(directory / "model.json")
+    onnx_path = export_onnx(model, directory)
+    parity = check_parity(model, onnx_path, data.x[time_split(len(data.y))[2]])
+    if parity > PARITY_TOLERANCE:
+        raise RuntimeError(f"ONNX parity check failed: max |diff| {parity:.2e}")
     metadata = {
+        "onnx_file": onnx_path.name,
+        "onnx_parity_max_abs_diff": parity,
         "model_name": MODEL_NAME,
         "model_version": MODEL_VERSION,
         "feature_version": FEATURE_VERSION,

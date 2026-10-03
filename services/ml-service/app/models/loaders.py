@@ -14,6 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import onnxruntime as ort
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,9 +85,45 @@ class ModelLoader:
 
 
 class OnnxFraudModelLoader(ModelLoader):
-    """Fraud model. ONNX session creation is added with the inference milestone."""
+    """Fraud model served through one shared ONNX Runtime session (created at startup)."""
 
     name = "fraud"
+
+    def __init__(self, artifacts_dir: Path, version: str) -> None:
+        super().__init__(artifacts_dir, version)
+        self._session: ort.InferenceSession | None = None
+        self._input_name = "features"
+
+    def _load_weights(self) -> None:
+        from app.features.fraud import FRAUD_FEATURE_ORDER
+
+        if self.metadata.get("feature_list") != list(FRAUD_FEATURE_ORDER):
+            raise ModelArtifactError(
+                "artifact feature_list does not match the serving feature order"
+            )
+        onnx_path = self.artifact_dir / str(self.metadata.get("onnx_file", "model.onnx"))
+        if not onnx_path.is_file():
+            raise ModelArtifactNotFound(f"fraud ONNX file not found at {onnx_path}")
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 1
+        options.inter_op_num_threads = 1
+        try:
+            session = ort.InferenceSession(
+                str(onnx_path), sess_options=options, providers=["CPUExecutionProvider"]
+            )
+        except Exception as exc:  # onnxruntime raises its own exception hierarchy
+            raise ModelArtifactError(f"cannot create ONNX session: {exc}") from exc
+        self._input_name = session.get_inputs()[0].name
+        self._session = session
+        # Warm-up so the first real request does not pay one-off initialisation cost.
+        self.predict_proba(np.zeros((1, len(FRAUD_FEATURE_ORDER)), dtype=np.float32))
+
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        """Positive-class probabilities for a float32 ``[N, n_features]`` matrix."""
+        if self._session is None:
+            raise ModelArtifactError("fraud ONNX session is not initialised")
+        outputs = self._session.run(None, {self._input_name: x})
+        return np.asarray(outputs[1], dtype=np.float64)[:, 1]
 
 
 class LightGbmDistressModelLoader(ModelLoader):

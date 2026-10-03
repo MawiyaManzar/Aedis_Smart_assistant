@@ -1,4 +1,6 @@
 {
+  "onnx_file": "model.onnx",
+  "onnx_parity_max_abs_diff": 4.76837158203125e-07,
   "model_name": "fraud",
   "model_version": "fraud-v1",
   "feature_version": "fraud-features-v1",
@@ -14,7 +16,7 @@
     "day_of_week",
     "channel_risk_score"
   ],
-  "trained_at": "2026-10-03T18:11:32+00:00",
+  "trained_at": "2026-10-03T18:18:22+00:00",
   "data_source": "synthetic",
   "data_seed": 42,
   "dataset_rows": 30016,
