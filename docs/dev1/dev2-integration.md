@@ -1,6 +1,6 @@
 # Dev2 integration guide (briefing for Developer 2's AI coding agent)
 
-Copy this whole file into your agent as context. Everything below was checked against the code on branch `dev1/foundation-setup`. Where the code and an older doc disagree, **the code wins** (`docs/dev1/setup.md` and `docs/dev1/ownership.md` still contain stale "stub model" wording; models are real now).
+Copy this whole file into your agent as context. Everything below was checked against the code on branch `dev1/foundation-setup`. Where the code and an older doc disagree, **the code wins** (models are real, loaded from the committed artifacts).
 
 Status of endpoints: all endpoints listed in section 4 exist in code on this branch. Items marked **PENDING** do not exist yet.
 
@@ -29,7 +29,7 @@ git checkout <your-dev2-branch>
 git merge origin/dev1/foundation-setup   # or: git merge dev1/foundation-setup if local
 ```
 
-- **PENDING/verify:** at the time of writing `dev1/foundation-setup` existed only in Dev1's local repo (`git ls-remote origin` listed only `main`). If `origin/dev1/foundation-setup` is not found, ask Dev1 to push it.
+- The M1-M16 work was merged to `main` via PR #1; `origin/dev1/foundation-setup` carries later follow-up fixes. Merge `origin/main` (or the follow-up branch, once its PR is merged).
 - Never force-push. Never merge to `main` without review. Resolve conflicts only in your own paths; if a conflict is in a Dev1 path, take Dev1's version and tell Dev1.
 
 ## 3. Environment setup
@@ -71,7 +71,7 @@ Neo4j constraints + deterministic seed graph (after Neo4j is healthy; reads `.en
 uv run --project services/ml-service python scripts/apply_neo4j_schema.py --seed
 ```
 
-Seed: 7 events, tenant `00000000-0000-4000-8000-0000000000a1`, ring `ring-seed-001` = `mule-001..003` sharing one device and IP `203.0.113.50`.
+Seed: 7 events, tenant `00000000-0000-4000-8000-0000000000a1`, ring `ring-seed-001` = `mule-001..003` sharing one device and IP `203.0.113.50`. Treat that tenant as the shared seed fixture: Dev1's demo scripts use a separate tenant `00000000-0000-4000-8000-0000000000d1` and tests use throwaway tenants. Note that `POST /v1/transactions/score` writes graph/DB rows for whatever tenant you send; use your own tenant ids for experiments rather than `...0a1`.
 
 Verify:
 
@@ -179,7 +179,7 @@ Distress batch flow:
 
 ```powershell
 cd services\ml-service
-uv run pytest -q                        # full suite; integration tests skip if Postgres is unreachable (AEDIS_REQUIRE_INTEGRATION=1 makes that a failure)
+uv run pytest -q                        # full suite; integration tests skip if Postgres is unreachable (AEDIS_REQUIRE_INTEGRATION=1 makes that a failure). Integration tests need DATABASE_URL (aedis_app) and MIGRATION_DATABASE_URL (aedis_admin) pointing at the stack, e.g. the ports from your .env
 uv run pytest -q tests/test_demo_scenarios.py   # no services needed
 uv run python scripts/demo_scam_ring.py           # optional arg: base URL, else AEDIS_ML_URL, else http://localhost:8000
 uv run python scripts/demo_loan_distress.py
@@ -230,10 +230,10 @@ Smoke checklist:
 8. Make worker handlers idempotent (score and resolve are both safe to retry).
 
 Questions to ask Dev1:
-1. Please push `dev1/foundation-setup` to `origin` (not on the remote yet).
+1. (Resolved) `dev1/foundation-setup` is on `origin` and M1-M16 is merged to `main`.
 2. Will there be an endpoint to list/page alerts (by tenant, status, resolution)? Currently only per-id resolve exists.
 3. Who persists `loan_distress_scores` for the nightly batch: an HTTP endpoint from Dev1, or can Dev2 write via a defined path?
 4. Which Postgres role/credentials should the gateway/workers use for reads (e.g. dashboards, alert lists), and any schema changes you need (migration request)?
 5. Is `/internal/graph/sync` meant to be called by Dev2, or only by the scoring pipeline?
 6. Expected stream consumer group name and retry/dead-letter convention for `stream:transaction:raw`.
-7. When will benchmark/latency numbers be available, and is a different set of tenants/seed data planned beyond tenant `...0a1`?
+7. When will benchmark/latency numbers be available, and is a different set of tenants/seed data planned beyond tenant `...0a1` (and the demo tenant `...0d1`)?

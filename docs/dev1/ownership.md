@@ -7,10 +7,11 @@ This file records the hackathon split. Developer 1 setup does not implement Deve
 - Docker Compose for PostgreSQL, Redis, Neo4j, and the Python ML service
 - PostgreSQL schema and Alembic migrations
 - Redis connectivity used by Developer 1 services (feature-store client wiring, not the stream consumers)
-- Neo4j constraints, indexes, and graph synchronization (schema is in place; sync worker is not)
+- Neo4j constraints, indexes, and graph synchronization (implemented: `POST /internal/graph/sync`, and `POST /v1/transactions/score` syncs after scoring; no stream consumer, that is Developer 2's worker)
 - `services/ml-service` FastAPI process
 - XGBoost fraud inference, ONNX Runtime, LightGBM loan-distress inference, SHAP endpoint
-- Synthetic demo data, graph/analytics APIs, analyst resolution API, and latency benchmarks in later phases
+- Synthetic demo data and demo scripts (`services/ml-service/scripts/`), dashboard graph/metrics APIs, and the analyst resolution API (all implemented)
+- Latency benchmark: not measured yet; no latency targets are claimed
 
 ## Developer 2 owns
 
@@ -40,16 +41,17 @@ Implemented now:
 
 The ML service does not call an LLM and does not depend on LangChain or LangGraph.
 
-Request and response fields for the three model routes are in `docs/dev1/api-contracts.md`. Those routes currently return `inference_mode: "stub"` and null scores.
+Request and response fields for the three model routes are in `docs/dev1/api-contracts.md`. Those routes are live and serve real inference from the committed `fraud-v1` / `distress-v1` artifacts (trained on synthetic data only).
 
-Not implemented yet, but already specified for later Developer 1 work:
+Also live (see `docs/dev1/dev2-integration.md` for contracts):
 
-- Graph sync that `MERGE`s accounts, devices, and `TRANSACTED_WITH` from `stream:transaction:raw`
-- `GET /v1/dashboard/graph/:accountId`
+- `POST /v1/transactions/score` (end-to-end: features, score, persist, graph sync)
+- `POST /internal/graph/sync`
+- `GET /v1/dashboard/graph/{account_id}`
 - `GET /v1/dashboard/metrics`
-- `POST /v1/alerts/:id/resolve`
+- `POST /v1/alerts/{id}/resolve`
 
-Developer 2's dashboard should consume those once they exist. Developer 1 does not build the UI.
+Not implemented: a stream consumer for `stream:transaction:raw` (Developer 2's worker calls `POST /v1/transactions/score`), a list-alerts endpoint, and an HTTP endpoint that persists distress batch scores. Developer 1 does not build the UI.
 
 ## Contract mismatches already in the repo
 
