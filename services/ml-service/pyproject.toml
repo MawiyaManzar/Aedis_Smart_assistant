@@ -45,13 +45,13 @@ dev = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-src = ["app", "tests"]
+src = ["app", "tests", "training"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["app", "training"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -59,7 +59,7 @@ asyncio_mode = "auto"
 
 [tool.mypy]
 python_version = "3.11"
-packages = ["app"]
+packages = ["app", "training"]
 ignore_missing_imports = true
 warn_unused_ignores = true
 check_untyped_defs = true
