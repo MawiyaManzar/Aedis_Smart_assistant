@@ -1,206 +1,170 @@
 # Developer 1 model API contracts
 
-**READY FOR IMPLEMENTATION**
+Status: the scoring routes below are **implemented** and return real model output. Section "Being added" lists routes other workers are building; their shapes are intent, not yet a guarantee.
 
-These routes exist and validate payloads. They do not score. Every success response sets `inference_mode` to `stub`, `model_version` to `unset`, and score fields to `null`. An empty `top_drivers` array means the explainer did not run.
+Base URL in local Compose: `http://localhost:8000`. Public routes are under `/v1`; service-to-service routes are under `/internal`. Request/response models live in `services/ml-service/app/schemas/` and are the source of truth. Models are trained on **synthetic data**; probabilities and scores are not evidence of real-bank performance.
 
-Base URL in local Compose: `http://localhost:8000`
+Naming: model routes use snake_case JSON. `POST /v1/transactions/score` and `POST /internal/graph/sync` take the gateway's camelCase `TransactionEvent` (snake_case names are also accepted).
 
-JSON fields are snake_case. The API gateway transaction body is camelCase. The worker that calls these routes is responsible for mapping between them.
-
-## Shared fields
-
-| Field | Meaning |
-| --- | --- |
-| `model_version` | Identifier of the loaded artifact. `unset` means no weights are loaded. |
-| `inference_mode` | `stub` during this phase. A later phase may add `onnx`, `lightgbm`, or `shap`. Clients must not treat `stub` as a risk decision. |
-| `latency_ms` | Wall time spent inside the handler for this request. It is not a model benchmark and not an end-to-end fraud SLO. |
-| `detail` | Human-readable reason the body is a stub. |
+No authentication is enforced by the ML service. The gateway in front of it is Developer 2's responsibility.
 
 ## Errors
 
-| Status | When |
-| --- | --- |
-| 200 | Payload matches the schema. Body is still a stub until weights exist. |
-| 422 | Body failed schema validation. FastAPI returns `{"detail": [{"type", "loc", "msg", "input"}]}`. |
-| 500 | Unexpected server error. |
-| 503 | `GET /health/ready` only, when Postgres, Redis, or Neo4j is unreachable. |
-
-No authentication is enforced on the ML service. The gateway in front of it is Developer 2's responsibility.
-
-## GET /health
-
-Process liveness. Does not check databases.
+Every non-2xx response has this body:
 
 ```json
-{"status": "ok", "service": "aedis-ml-service"}
+{"error": {"code": "NOT_FOUND", "message": "...", "request_id": "5b1f...", "details": [{"loc": ["body", "amount"], "msg": "...", "type": "..."}]}}
 ```
 
-## GET /version
+`details` is present only when non-empty (validation errors). `request_id` is also assigned per request by the request-context middleware.
 
-```json
-{
-  "service": "aedis-ml-service",
-  "version": "0.1.0",
-  "python": "3.11.x",
-  "inference_mode": "stub"
-}
-```
+| HTTP | `code` | When |
+| --- | --- | --- |
+| 422 | `VALIDATION_ERROR` | Body failed schema validation; `details` holds `loc`, `msg`, `type` |
+| 404 | `NOT_FOUND` / `HTTP_ERROR` | Unknown entity / unknown route |
+| 409 | `CONFLICT` | State conflict |
+| 503 | `MODEL_NOT_LOADED` | A model artifact is missing or failed to load |
+| 503 | `DEPENDENCY_UNAVAILABLE` | Postgres, Redis or Neo4j unreachable |
+| 500 | `INTERNAL_ERROR` | Unexpected error (no internals leaked) |
 
-## GET /health/ready
+## Health
 
-```json
-{"status": "ok", "postgres": true, "redis": true, "neo4j": true}
-```
-
-`status` is `degraded` and the HTTP status is 503 when any boolean is false.
+- `GET /health` -> `{"status": "ok", "service": "aedis-ml-service"}` (liveness, no dependency checks).
+- `GET /version` -> `{"service", "version", "python", "models": [{"name","version","loaded","error"}]}`.
+- `GET /health/ready` -> `{"status": "ok"|"degraded", "postgres": bool, "redis": bool, "neo4j": bool, "models": [{"name","version","loaded","error"}]}`. HTTP 503 with `status: "degraded"` when any dependency is down or any model is not loaded.
 
 ## POST /v1/models/fraud/score
 
-Scores one transaction feature vector. The caller hydrates features. This service does not read Redis or Neo4j on this route yet.
+The caller supplies the hydrated feature vector (this route does not read Redis/Neo4j).
 
-### Request
+Request:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `transaction_id` | UUID | Same id the gateway accepted |
-| `tenant_id` | UUID | Tenant from the gateway stream entry |
-| `features.amount_zscore` | number | Amount relative to the account's baseline |
-| `features.velocity_1h` | number | Transaction count or amount velocity over 1 hour |
-| `features.velocity_24h` | number | Same window over 24 hours |
-| `features.graph_hops` | integer >= 0 | Neo4j hop count supplied by the worker |
-| `features.is_new_beneficiary` | boolean | Beneficiary not seen before for this sender |
-| `features.device_age_days` | number >= 0 | Age of the device identifier |
-| `features.ip_country_risk` | number | Caller-supplied country risk figure |
-| `features.hour_of_day` | integer 0-23 | Hour from the transaction timestamp |
-| `features.day_of_week` | integer 0-6 | Monday = 0 |
-| `features.channel_risk_score` | number | Caller-supplied channel risk figure |
+| `transaction_id`, `tenant_id` | UUID | Ids from the gateway |
+| `features.amount_zscore` | number | Amount relative to the sender's baseline |
+| `features.velocity_1h`, `velocity_24h` | number >= 0 | Outgoing velocity in each window |
+| `features.graph_hops` | integer -1..4 | 0 sender is flagged, 1-3 shortest path to a flagged account, 4 none within 3 hops, -1 graph unavailable |
+| `features.is_new_beneficiary` | boolean | |
+| `features.device_age_days` | number >= 0 | |
+| `features.ip_country_risk` | number 0..1 | |
+| `features.hour_of_day` | integer 0..23 | |
+| `features.day_of_week` | integer 0..6 | Monday = 0 |
+| `features.channel_risk_score` | number 0..1 | |
+
+Response:
 
 ```json
 {
   "transaction_id": "8b0b0d0e-6c1a-4f0a-9c2d-1a2b3c4d5e6f",
-  "tenant_id": "11111111-1111-1111-1111-111111111111",
-  "features": {
-    "amount_zscore": 1.5,
-    "velocity_1h": 2.0,
-    "velocity_24h": 4.0,
-    "graph_hops": 1,
-    "is_new_beneficiary": true,
-    "device_age_days": 3.0,
-    "ip_country_risk": 0.2,
-    "hour_of_day": 3,
-    "day_of_week": 1,
-    "channel_risk_score": 0.4
-  }
+  "model_version": "fraud-v1",
+  "feature_version": "fraud-features-v1",
+  "fraud_probability": 0.0,
+  "status": "APPROVED",
+  "graph_status": "OK",
+  "inference_latency_ms": 0.0
 }
 ```
 
-### Response
+The numbers above are placeholders for the shape. `status`: `APPROVED` below 0.3, `FLAGGED` 0.3-0.7, `BLOCKED` above 0.7. `graph_status` is `DEGRADED` when `graph_hops` was `-1`. `inference_latency_ms` is the measured ONNX Runtime `session.run` time, not an end-to-end SLO.
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `fraud_probability` | number or null | Intended range is 0 to 1 once ONNX scoring exists. Null now. |
-| `status` | `APPROVED`, `FLAGGED`, `BLOCKED`, or null | Threshold decision. Null now. The architecture thresholds are < 0.3 approved, 0.3-0.7 flagged, > 0.7 blocked. This service does not apply them yet. |
+## POST /v1/transactions/score
+
+End-to-end: reads history from Postgres and a bounded Neo4j lookup, builds features (before the transaction is written, so it never influences its own score), scores, persists `transactions` / `fraud_events` / `audit_log`, then syncs the graph.
+
+Request (camelCase):
 
 ```json
 {
-  "transaction_id": "8b0b0d0e-6c1a-4f0a-9c2d-1a2b3c4d5e6f",
-  "model_version": "unset",
-  "inference_mode": "stub",
-  "fraud_probability": null,
-  "status": null,
-  "latency_ms": 0.1,
-  "detail": "ONNX fraud weights are not loaded. This is a contract stub, not a model score."
+  "tenantId": "00000000-0000-4000-8000-0000000000a1",
+  "transactionId": "<uuid>",
+  "fromAccountId": "victim-001",
+  "toAccountId": "mule-001",
+  "amount": 4750.0,
+  "currency": "USD",
+  "channel": "web",
+  "deviceId": "device-ring-001",
+  "ipAddress": "203.0.113.50",
+  "timestamp": "2026-02-01T03:10:00Z"
 }
 ```
+
+`channel` is one of `mobile`, `web`, `atm`, `branch` (database constraint). `deviceId` and `ipAddress` are optional; `currency` defaults to `USD`. Naive timestamps are treated as UTC.
+
+Response:
+
+```json
+{
+  "fraud_event_id": "<uuid>",
+  "score": { "transaction_id": "...", "model_version": "...", "feature_version": "...", "fraud_probability": 0.0, "status": "BLOCKED", "graph_status": "OK", "inference_latency_ms": 0.0 },
+  "fraud_ring_ids": ["ring-seed-001"],
+  "suspicious_accounts": ["mule-001"],
+  "top_drivers": [{"feature": "ip_country_risk", "value": 0.9, "shap_contribution": 0.0}],
+  "graph_synced": true,
+  "total_latency_ms": 0.0
+}
+```
+
+`top_drivers` is computed only for `FLAGGED`/`BLOCKED` and is empty for `APPROVED`. If the graph write fails after scoring, `graph_synced` is `false` and the score is still persisted. Re-sending the same `transactionId` re-scores it in place (one `fraud_events` row per transaction and model version).
 
 ## POST /v1/models/distress/score-batch
 
-Batch size is 1 to 500 borrowers, matching the architecture's page size.
+1 to 500 borrowers per call. Needs the `distress` model loaded, otherwise 503 `MODEL_NOT_LOADED`.
 
-### Request
+Request: `{"evaluation_date": "YYYY-MM-DD", "borrowers": [{"borrower_id": "<uuid>", "features": {"avg_balance_30d", "avg_balance_60d", "balance_drop_pct", "atm_spike_ratio", "new_credit_count"}}]}`. Feature definitions: `distress-features.md`.
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `evaluation_date` | `YYYY-MM-DD` | Batch evaluation date |
-| `borrowers[].borrower_id` | UUID | Borrower primary key |
-| `borrowers[].features.avg_balance_30d` | number | 30-day average closing balance |
-| `borrowers[].features.avg_balance_60d` | number | 60-day average closing balance |
-| `borrowers[].features.balance_drop_pct` | number | Derived as `(avg_balance_60d - avg_balance_30d) / avg_balance_60d` by a future builder |
-| `borrowers[].features.atm_spike_ratio` | number | Derived as `atm_14d / (atm_28d / 2)` by a future builder |
-| `borrowers[].features.new_credit_count` | integer >= 0 | Count of high-interest credit events. The architecture SQL names the source column `new_high_interest_count`. |
-
-`DistressFeatureBuilder.build` accepts the SQL aggregate inputs (`avg_balance_30d`, `avg_balance_60d`, `atm_14d`, `atm_28d`, `new_high_interest_count`) and raises `NotImplementedError`. It does not derive the ratios yet.
-
-### Response
-
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `scores[].distress_score` | integer 0-100 or null | Null now |
-| `scores[].risk_band` | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`, or null | Architecture bands are 0-39, 40-59, 60-74, 75-100. Not applied yet. |
+Response:
 
 ```json
 {
-  "model_version": "unset",
-  "inference_mode": "stub",
-  "evaluation_date": "2026-10-03",
-  "scores": [
-    {
-      "borrower_id": "22222222-2222-2222-2222-222222222222",
-      "distress_score": null,
-      "risk_band": null
-    }
-  ],
-  "latency_ms": 0.1,
-  "detail": "LightGBM distress weights are not loaded. This is a contract stub, not a model score."
+  "model_version": "distress-v1",
+  "feature_version": "distress-features-v1",
+  "evaluation_date": "2026-02-01",
+  "scores": [{"borrower_id": "<uuid>", "distress_score": 0, "risk_band": "LOW"}],
+  "inference_latency_ms": 0.0
 }
 ```
 
+`distress_score` is an integer 0-100. Bands: 0-39 `LOW`, 40-59 `MEDIUM`, 60-74 `HIGH`, 75-100 `CRITICAL`. `inference_latency_ms` is the measured LightGBM predict time.
+
 ## POST /v1/models/explain/shap
 
-One route, two body shapes, selected by `model_name`.
+One route, two body shapes selected by `model_name`. Fraud: `model_name: "fraud"`, `entity_type: "FRAUD_EVENT"`, `features` = fraud features. Distress: `model_name: "distress"`, `entity_type: "DISTRESS_SCORE"`, `features` = distress features. Common fields: `entity_id` (UUID), `top_n` (1-10, default 3).
 
-Fraud body: `model_name = "fraud"`, `entity_type = "FRAUD_EVENT"`, `features` is a fraud feature object.
-
-Distress body: `model_name = "distress"`, `entity_type = "DISTRESS_SCORE"`, `features` is a distress feature object.
-
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `entity_id` | UUID | `fraud_events.id` or `loan_distress_scores.id` |
-| `top_n` | integer 1-10, default 3 | How many drivers a future explainer should return |
-
-### Response
-
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `top_drivers` | array | Empty while the explainer is unloaded |
-| `top_drivers[].feature` | string | Feature name |
-| `top_drivers[].value` | number, boolean, or null | Feature value used for that explanation |
-| `top_drivers[].shap_contribution` | number or null | Signed SHAP contribution |
+Response:
 
 ```json
 {
   "entity_type": "FRAUD_EVENT",
-  "entity_id": "8b0b0d0e-6c1a-4f0a-9c2d-1a2b3c4d5e6f",
+  "entity_id": "<uuid>",
   "model_name": "fraud",
-  "model_version": "unset",
-  "inference_mode": "stub",
-  "top_drivers": [],
-  "latency_ms": 0.1,
-  "detail": "SHAP explainer is not loaded. This is a contract stub, not an explanation."
+  "model_version": "fraud-v1",
+  "base_value": 0.0,
+  "top_drivers": [{"feature": "amount_zscore", "value": 1.5, "shap_contribution": 0.0}],
+  "inference_latency_ms": 0.0
 }
 ```
 
-The LLM audit sentence is not part of this response. Developer 2's explainability worker adds that after reading `top_drivers`.
+`shap_contribution` is a signed log-odds contribution (positive raises risk); `base_value` is the expected model output over the background set. The natural-language audit sentence is not part of this response; Developer 2's explainability worker produces it from `top_drivers`.
 
-## Feature builders
+## POST /internal/graph/sync
 
-`FraudFeatureBuilder` and `DistressFeatureBuilder` are the only supported places to compute features. Both raise `NotImplementedError`. Calling them must not be wired to these HTTP routes until the next phase.
+Idempotently writes one transaction (same camelCase body as `/v1/transactions/score`) into Neo4j. Not part of the public dashboard API.
 
-## PostgreSQL tables these scores will write later
+```json
+{"transaction_id": "<uuid>", "nodes_created": 0, "relationships_created": 0, "properties_set": 0, "duration_ms": 0.0, "replayed": true}
+```
 
-The writers are not in this service yet. The columns they need already exist:
+`replayed` is `true` when the event changed no graph structure (all counts zero on an exact replay). Flagged ring accounts are `Account` nodes with `fraudRingId` set.
 
-- `fraud_events.fraud_score`, `status`, `model_version`, `graph_hops`, `shap_values`, `audit_summary`
-- `loan_distress_scores.distress_score`, `risk_band`, `model_version`, `features_snap`, `shap_values`, `audit_summary`
-- `audit_log` append-only rows with `entity_type`, `entity_id`, `event_type`, `actor`, `payload`
+## Being added (not final)
+
+These routes are being implemented by other workers on this branch. Treat the paths as agreed and the bodies as provisional until the code lands; `app/api/*.py` and the OpenAPI document at `/openapi.json` are authoritative.
+
+- `GET /v1/dashboard/graph/{account_id}` - neighbourhood of an account for the dashboard graph view (nodes and edges, with flagged accounts and their `fraudRingId`).
+- `GET /v1/dashboard/metrics` - aggregate counts and rates computed from persisted `fraud_events` / `loan_distress_scores`.
+- `POST /v1/alerts/{id}/resolve` - resolve a fraud alert; errors use the shared error body above (404 `NOT_FOUND` for an unknown id).
+
+## Persistence
+
+Scores are written by `app/db/repositories.py`: `fraud_events` (`fraud_score`, `status`, `graph_hops`, `graph_status`, `fraud_ring_ids`, `model_version`, `features_snap`, `shap_values`), `loan_distress_scores` (`distress_score`, `risk_band`, `model_version`, `features_snap`, `shap_values`) and append-only `audit_log`.
