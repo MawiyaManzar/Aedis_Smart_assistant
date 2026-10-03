@@ -101,7 +101,7 @@ uv run ruff format --check app tests
 uv run mypy app
 ```
 
-The pytest suite checks Python 3.11, service startup, the health endpoint, importability of the ML libraries, and the stub response contracts. It does not require Docker.
+The pytest suite checks Python 3.11, service startup, the health endpoint, model loading and inference, SHAP, feature builders, and API contracts. Tests under `tests/integration` need the Compose stack (Postgres, Redis, Neo4j) and migrations; they skip when Postgres is unreachable unless `AEDIS_REQUIRE_INTEGRATION=1`.
 
 ## Health checks
 
@@ -114,7 +114,7 @@ curl http://127.0.0.1:8000/version
 
 Expected liveness body: `{"status":"ok","service":"aedis-ml-service"}`.
 
-`/version` reports `inference_mode: "stub"` until real weights exist.
+`/version` returns `{"service","version","python","models":[{"name","version","loaded","error"}]}`; with the committed artifacts both `fraud` (`fraud-v1`) and `distress` (`distress-v1`) show `loaded: true`.
 
 Dependency readiness:
 
@@ -152,4 +152,8 @@ Integration tests (need the stack and `uv run alembic upgrade head`) live in `te
 
 ## Model artifacts
 
-No model files are shipped. `FRAUD_MODEL_PATH` and `DISTRESS_MODEL_PATH` are optional. Setting them does not load weights in this phase. Scoring endpoints stay in `inference_mode = "stub"` and return null scores.
+Trained artifacts are committed under `services/ml-service/artifacts/` (`fraud/` = `fraud-v1`, XGBoost via ONNX Runtime; `distress/` = `distress-v1`, LightGBM) and are baked into the Docker image. Both were trained on synthetic data only (see `model-card-fraud.md`). The service loads them at startup from `ARTIFACTS_DIR` (default `services/ml-service/artifacts`); nothing needs to be downloaded. `/version` and `/health/ready` list each model with `loaded` and `error`. If an artifact is missing or corrupt the service still starts and scoring returns `503 MODEL_NOT_LOADED`, unless `REQUIRE_MODELS=true`, which aborts startup instead.
+
+## Demo scripts
+
+`services/ml-service/scripts/demo_scam_ring.py` and `demo_loan_distress.py` drive the running service (default `http://localhost:8000`). They use their own demo tenant (`...0d1`), not the shared graph seed tenant. See `docs/dev1/demo.md`.
