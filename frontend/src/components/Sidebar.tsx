@@ -2,6 +2,7 @@
 
 import React from "react";
 import { UserRole } from "@/lib/types";
+import { useAuth } from "@/context/AuthContext";
 
 interface SidebarProps {
   activeRole: UserRole;
@@ -26,6 +27,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mobileOpen,
   setMobileOpen,
 }) => {
+  const { user, isAuthenticated, currentTenant, openAuthModal, gatewayStatus } =
+    useAuth();
+
   const navItems: Array<{ id: UserRole; num: string; label: string; sub: string }> = [
     {
       id: "SENTINEL",
@@ -153,6 +157,46 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Sidebar Footer Controls & Quick Telemetry */}
         <div className="p-4 border-t-2 border-[#141413] bg-[#F5EFEB] space-y-3">
+          {/* Operator Gateway Auth Card */}
+          <div className="p-2.5 bg-[#FFFFFF] border-2 border-[#141413]">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`w-2 h-2 ${
+                    gatewayStatus === 'ONLINE' ? 'bg-[#2A4B45]' : 'bg-[#C86432]'
+                  }`}
+                />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#141413]/70">
+                  {isAuthenticated ? 'OPERATOR ACTIVE' : 'GATEWAY STANDBY'}
+                </span>
+              </div>
+              <button
+                onClick={openAuthModal}
+                className="text-[10px] font-bold uppercase underline hover:text-[#C86432] cursor-pointer"
+              >
+                {isAuthenticated ? '[MANAGE]' : '[LOGIN]'}
+              </button>
+            </div>
+
+            {isAuthenticated && user ? (
+              <div className="space-y-0.5">
+                <div className="font-black text-xs uppercase text-[#141413] truncate">
+                  {user.sub}
+                </div>
+                <div className="text-[10px] font-mono text-[#141413]/70 truncate">
+                  {currentTenant.name}
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={openAuthModal}
+                className="w-full mt-1 py-1 px-2 text-[10px] font-bold uppercase bg-[#C86432] text-white border border-[#141413] hover:bg-[#141413] cursor-pointer"
+              >
+                [ CONNECT GATEWAY ]
+              </button>
+            )}
+          </div>
+
           {/* Quick Metrics */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="p-2 bg-[#FFFFFF] border border-[#141413]">

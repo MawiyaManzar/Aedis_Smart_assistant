@@ -91,3 +91,37 @@ export interface AuditRecord {
 }
 
 export type UserRole = 'SENTINEL' | 'CREDIT' | 'AUDITOR' | 'ARCHITECT' | 'SIMULATOR';
+
+export interface AuthUser {
+  sub: string;
+  email: string;
+  tenantId: string;
+  roles: string[];
+  token?: string;
+  expiresAt?: number;
+}
+
+export interface Tenant {
+  id: string;
+  name: string;
+  code: string;
+  region: string;
+  currency: string;
+  status: 'ACTIVE' | 'ISOLATED' | 'MAINTENANCE';
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+  tenantId?: string;
+}
+
+export interface AuthResponse {
+  message: string;
+  token: string;
+  tenantId: string;
+  expiresIn: string;
+  error?: string;
+  details?: Record<string, unknown>;
+}
+

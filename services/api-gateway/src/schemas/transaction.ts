@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const TransactionSchema = z.object({
-  transactionId: z.string().uuid(),
+  transactionId: z.uuid(),
   fromAccountId: z.string().min(1, 'Sender account is required'),
   toAccountId: z.string().min(1, 'Receiver account is required'),
   amount: z.number().positive('Amount must be greater than 0'),

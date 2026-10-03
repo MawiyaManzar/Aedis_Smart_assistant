@@ -17,8 +17,14 @@ import { ExplainabilityAuditView } from "@/components/ExplainabilityAuditView";
 import { SystemArchitectView } from "@/components/SystemArchitectView";
 import { RiskSimulatorSandbox } from "@/components/RiskSimulatorSandbox";
 import { GraduatedInterventionsModal } from "@/components/GraduatedInterventionsModal";
+import { LoginGatewayGate } from "@/components/LoginGatewayGate";
+import { useAuth } from "@/context/AuthContext";
+import { pushLiveTransactionToGateway } from "@/lib/authApi";
 
 export default function Home() {
+  const { user, token, tenantId, isAuthenticated, openAuthModal } = useAuth();
+  const [demoBypass, setDemoBypass] = useState<boolean>(false);
+
   const [activeRole, setActiveRole] = useState<UserRole>("SENTINEL");
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(INITIAL_TRANSACTIONS[0]);
@@ -31,6 +37,7 @@ export default function Home() {
   const [interventionModalTx, setInterventionModalTx] = useState<Transaction | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -120,11 +127,13 @@ export default function Home() {
       prev.map((t) => (t.id === txId ? { ...t, status: newStatus, intervention } : t))
     );
 
+    const analystId = user?.sub ? `${user.sub.toUpperCase()} (${user.roles[0] || 'RISK_ANALYST'})` : "FRAUD-SENTINEL-OFFICER";
+
     const newAudit: AuditRecord = {
       id: `AUDIT-SEC-${Math.floor(100 + Math.random() * 900)}`,
       txOrLoanId: txId,
       timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
-      analyst: "FRAUD-SENTINEL-OFFICER",
+      analyst: analystId,
       actionTaken:
         newStatus === "BLOCKED"
           ? "MANUAL_ESCROW_FREEZE"
@@ -133,14 +142,14 @@ export default function Home() {
           : "STATUS_UPDATE",
       previousStatus: tx.status,
       newStatus: newStatus,
-      shapDigest: `SHAP [Score: ${tx.riskScore}/100, Latency: ${tx.onnxLatencyMs}ms]`,
+      shapDigest: `SHAP [Score: ${tx.riskScore}/100, Latency: ${tx.onnxLatencyMs}ms, Tenant: ${tenantId}]`,
       nlpSummary: tx.nlpExplanation,
       guardrailsHash: `0x${Math.random().toString(16).substring(2, 6).toUpperCase()}...${Math.random().toString(16).substring(2, 6).toUpperCase()}`,
       immutableBlock: `#Block-${Math.floor(8812900 + Math.random() * 500)}`,
     };
 
     setAuditLogs((prev) => [newAudit, ...prev]);
-    showToast(`✓ ACTION APPLIED: ${txId} → ${newStatus} [AUDIT COMMITTED]`);
+    showToast(`✓ ACTION APPLIED: ${txId} → ${newStatus} [AUDIT COMMITTED: ${analystId}]`);
   };
 
   // Handle modal resolution
@@ -157,15 +166,17 @@ export default function Home() {
       )
     );
 
+    const analystId = user?.sub ? `${user.sub.toUpperCase()} (DYNAMIC_FRICTION)` : "DYNAMIC-FRICTION-ENGINE";
+
     const newAudit: AuditRecord = {
       id: `AUDIT-SEC-${Math.floor(100 + Math.random() * 900)}`,
       txOrLoanId: txId,
       timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
-      analyst: "DYNAMIC-FRICTION-ENGINE",
+      analyst: analystId,
       actionTaken: resolution,
       previousStatus: "PENDING_OTP",
       newStatus: newStatus,
-      shapDigest: `INTERVENTION RESOLUTION: ${resolution}`,
+      shapDigest: `INTERVENTION RESOLUTION: ${resolution} [Tenant: ${tenantId}]`,
       nlpSummary:
         resolution === "PASSED_OTP"
           ? "Step-up SMS OTP verified by customer. Risk baseline recalibrated."
@@ -185,16 +196,17 @@ export default function Home() {
     );
 
     const b = borrowers.find((item) => item.id === borrowerId);
+    const analystId = user?.sub ? `${user.sub.toUpperCase()} (CREDIT_RISK)` : "CREDIT-RISK-OFFICER";
 
     const newAudit: AuditRecord = {
       id: `AUDIT-SEC-${Math.floor(100 + Math.random() * 900)}`,
       txOrLoanId: borrowerId,
       timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
-      analyst: "CREDIT-RISK-OFFICER",
+      analyst: analystId,
       actionTaken: "DISPATCH_RESTRUCTURING_PLAYBOOK",
       previousStatus: b?.status || "MONITORED",
       newStatus: "INTERVENED",
-      shapDigest: `LIGHTGBM SCORE ${b?.distressScore}/100`,
+      shapDigest: `LIGHTGBM SCORE ${b?.distressScore}/100 [Tenant: ${tenantId}]`,
       nlpSummary: playbook,
       guardrailsHash: `0x${Math.random().toString(16).substring(2, 6).toUpperCase()}...CRED`,
       immutableBlock: `#Block-${Math.floor(8813000 + Math.random() * 100)}`,
@@ -209,6 +221,23 @@ export default function Home() {
     setTransactions((prev) => [tx, ...prev.slice(0, 19)]);
     setSelectedTx(tx);
     showToast(`✓ SIMULATED PAYLOAD INJECTED: ${tx.id} [SCORE: ${tx.riskScore}/100]`);
+
+    // Also dispatch to API Gateway ingestion stream
+    pushLiveTransactionToGateway(
+      {
+        transactionId: tx.id,
+        fromAccountId: tx.sender.account,
+        toAccountId: tx.recipient.account,
+        amount: tx.amount,
+        currency: "USD",
+        channel: "web",
+        deviceId: tx.sender.deviceId,
+        ipAddress: tx.sender.ipAddress,
+        timestamp: new Date().toISOString(),
+      },
+      token || undefined,
+      tenantId
+    ).catch(() => {});
   };
 
   // Manual inject burst
@@ -252,9 +281,39 @@ export default function Home() {
     setTransactions((prev) => [burstTx, ...prev.slice(0, 19)]);
     setSelectedTx(burstTx);
     showToast(`🚨 CRITICAL SCAM BURST INJECTED: ${burstTx.id} ISOLATED`);
+
+    // Stream directly into Fastify backend API Gateway
+    pushLiveTransactionToGateway(
+      {
+        transactionId: burstTx.id,
+        fromAccountId: burstTx.sender.account,
+        toAccountId: burstTx.recipient.account,
+        amount: burstTx.amount,
+        currency: "USD",
+        channel: "mobile",
+        deviceId: burstTx.sender.deviceId,
+        ipAddress: burstTx.sender.ipAddress,
+        timestamp: new Date().toISOString(),
+      },
+      token || undefined,
+      tenantId
+    ).catch(() => {});
   };
 
   const blockedCount = transactions.filter((t) => t.status === "BLOCKED").length;
+
+  // If user is unauthenticated and hasn't explicitly chosen demo mode, show Gateway Login portal
+  if (!isAuthenticated && !demoBypass) {
+    return (
+      <div className="relative min-h-screen bg-[#F5EFEB] text-[#141413] font-sans flex flex-col justify-center items-center p-4 selection:bg-[#141413] selection:text-white">
+        <div
+          className="fixed inset-0 pointer-events-none z-0 bg-[url('/egypt-bg.png')] bg-cover bg-fixed bg-center opacity-25"
+          aria-hidden="true"
+        />
+        <LoginGatewayGate onBypassDemo={() => setDemoBypass(true)} />
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-[#F5EFEB] text-[#141413] font-sans flex flex-col justify-between selection:bg-[#141413] selection:text-white">
@@ -263,6 +322,26 @@ export default function Home() {
         className="fixed inset-0 pointer-events-none z-0 bg-[url('/egypt-bg.png')] bg-cover bg-fixed bg-center opacity-25"
         aria-hidden="true"
       />
+
+      {/* Sticky Demo Warning Banner if unauthenticated */}
+      {!isAuthenticated && (
+        <div className="relative z-30 bg-[#FAF7F2] border-b-2 border-[#141413] px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs font-bold uppercase shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="bg-[#C86432] text-white px-2 py-0.5 text-[10px] font-black">
+              READ-ONLY DEMO
+            </span>
+            <span className="text-[#141413]">
+              Running in unauthenticated preview mode. Authenticate to connect to Fastify API Gateway &amp; Redis Streams.
+            </span>
+          </div>
+          <button
+            onClick={openAuthModal}
+            className="px-3 py-1 bg-[#141413] text-white border border-[#141413] hover:bg-[#C86432] cursor-pointer"
+          >
+            [ 🔑 AUTHENTICATE OPERATOR ]
+          </button>
+        </div>
+      )}
 
       {/* Toast Notification Banner */}
       {toastMessage && (
@@ -277,6 +356,7 @@ export default function Home() {
         onClose={() => setInterventionModalTx(null)}
         onResolve={handleModalResolve}
       />
+
 
       {/* Left Sidebar Navigation (Laptop & Responsive) */}
       <Sidebar
