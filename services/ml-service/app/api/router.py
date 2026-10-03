@@ -2,9 +2,19 @@
 
 from fastapi import APIRouter
 
-from app.api import alerts, distress, explain, fraud, health, internal, transactions
+from app.api import (
+    alerts,
+    dashboard_metrics,
+    distress,
+    explain,
+    fraud,
+    health,
+    internal,
+    transactions,
+)
 
 api_router = APIRouter()
+api_router.include_router(dashboard_metrics.router, prefix="/v1")
 api_router.include_router(health.router)
 api_router.include_router(internal.router)
 api_router.include_router(fraud.router, prefix="/v1")
