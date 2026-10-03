@@ -19,6 +19,7 @@ from app.explainability.shap_explainer import ShapExplainService
 from app.graph.client import GraphClient
 from app.graph.queries import GraphEnricher
 from app.graph.service import GraphSyncService
+from app.graph.view import GraphViewService
 from app.inference.distress import DistressInferenceService
 from app.inference.fraud import FraudInferenceService
 from app.inference.pipeline import TransactionScoringService
@@ -55,6 +56,7 @@ class ServiceContainer:
         )
         self.graph_sync = GraphSyncService(self.graph)
         self.graph_enricher = GraphEnricher(self.graph, settings.graph_query_timeout_seconds)
+        self.graph_view = GraphViewService(self.graph)
         self.fraud_loader = OnnxFraudModelLoader(
             settings.artifacts_dir, settings.fraud_model_version
         )
