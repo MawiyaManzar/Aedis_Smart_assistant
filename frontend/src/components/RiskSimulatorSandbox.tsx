@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Transaction, ShapDriver } from "@/lib/types";
+import { Transaction, ShapDriver, VelocityMetrics } from "@/lib/types";
+import { fetchAccountVelocityFeatures } from "@/lib/authApi";
 
 interface RiskSimulatorSandboxProps {
   onInjectEvaluatedTx: (tx: Transaction) => void;
@@ -18,8 +19,23 @@ export const RiskSimulatorSandbox: React.FC<RiskSimulatorSandboxProps> = ({
   const [sessionVelocity, setSessionVelocity] = useState<"RAPID_AFTER_RESET" | "NORMAL">("RAPID_AFTER_RESET");
   const [deviceEnvironment, setDeviceEnvironment] = useState<"EMULATOR" | "TOR_IP" | "TRUSTED">("EMULATOR");
 
+  const [targetAccount, setTargetAccount] = useState("acc_user_101");
+  const [liveVelocity, setLiveVelocity] = useState<VelocityMetrics | null>(null);
+  const [checkingVelocity, setCheckingVelocity] = useState(false);
+
   const [evaluatedResult, setEvaluatedResult] = useState<Transaction | null>(null);
   const [evaluating, setEvaluating] = useState<boolean>(false);
+
+  const handleQueryRedisVelocity = async (accId = targetAccount) => {
+    setCheckingVelocity(true);
+    try {
+      const vel = await fetchAccountVelocityFeatures(accId);
+      if (vel) setLiveVelocity(vel);
+    } finally {
+      setCheckingVelocity(false);
+    }
+  };
+
 
   const runEvaluation = () => {
     setEvaluating(true);
@@ -88,13 +104,23 @@ export const RiskSimulatorSandbox: React.FC<RiskSimulatorSandboxProps> = ({
         });
       }
 
-      // 4. Session Velocity
+      // 4. Session Velocity (Aligned with feat:velocity Redis feature store)
+      const vel1m = sessionVelocity === "RAPID_AFTER_RESET" ? 6 : 1;
+      const vel1h = sessionVelocity === "RAPID_AFTER_RESET" ? 14 : 3;
+      const vel24h = sessionVelocity === "RAPID_AFTER_RESET" ? 36 : 7;
+      const sumAmount1h = amount * (sessionVelocity === "RAPID_AFTER_RESET" ? 2.5 : 1);
+
       if (sessionVelocity === "RAPID_AFTER_RESET") {
-        baseScore += 12;
+        baseScore += 24;
         shapDrivers.push({
-          feature: "Session Velocity",
-          impact: 12,
-          description: "Rapid transfer initiated 3 minutes after credential reset",
+          feature: "1-Min Velocity Spike",
+          impact: 24,
+          description: `${vel1m} transactions within 60s window (threshold: >= 5)`,
+        });
+        shapDrivers.push({
+          feature: "Hourly Outflow Surge",
+          impact: 14,
+          description: `Hourly outflow volume exceeds $${Math.round(sumAmount1h).toLocaleString()}`,
         });
       }
 
@@ -175,6 +201,14 @@ export const RiskSimulatorSandbox: React.FC<RiskSimulatorSandboxProps> = ({
         guardrailsVerified: true,
         onnxLatencyMs: parseFloat((28 + Math.random() * 15).toFixed(1)),
         graphHops: beneficiaryType === "NEW_MULE" ? 2 : 0,
+        velocity: {
+          count1m: vel1m,
+          count1h: vel1h,
+          count24h: vel24h,
+          sumAmount1h: Math.round(sumAmount1h),
+        },
+        fraudRingIds: beneficiaryType === "NEW_MULE" ? ["MULE-RING-ALPHA-07"] : [],
+        modelVersion: "heuristic-rules-v1",
       };
 
       setEvaluatedResult(generatedTx);
@@ -182,6 +216,7 @@ export const RiskSimulatorSandbox: React.FC<RiskSimulatorSandboxProps> = ({
       setEvaluating(false);
     }, 450);
   };
+
 
   return (
     <div className="w-full flex flex-col gap-8 text-[#141413]">
@@ -414,7 +449,74 @@ export const RiskSimulatorSandbox: React.FC<RiskSimulatorSandboxProps> = ({
               {evaluating ? "[ EVALUATING VIA ONNX ML + SHAP... ]" : "[ EXECUTE RISK EVALUATION PIPELINE ]"}
             </button>
           </div>
+
+          {/* Live Redis Feature Store Velocity Inspector */}
+          <div className="border-t-2 border-[#141413] pt-4 mt-2 bg-[#FAF7F2] p-4 border border-[#141413]">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-extrabold text-xs uppercase text-[#141413]">
+                REDIS FEATURE STORE LIVE INSPECTOR
+              </span>
+              <span className="text-[10px] bg-[#141413] text-white font-mono px-2 py-0.5 uppercase">
+                FEAT:VELOCITY
+              </span>
+            </div>
+            <p className="text-[11px] text-[#141413]/70 font-medium mb-3">
+              Query atomic Redis keys (<code className="font-bold text-[#141413]">feat:velocity:1m</code>, <code className="font-bold text-[#141413]">1h</code>, <code className="font-bold text-[#141413]">24h</code>, <code className="font-bold text-[#141413]">amount_sum:1h</code>) hydrated by <code className="font-bold text-[#141413]">fraud-worker</code>:
+            </p>
+
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={targetAccount}
+                onChange={(e) => setTargetAccount(e.target.value)}
+                placeholder="acc_user_101"
+                className="flex-1 bg-white border border-[#141413] p-2 text-xs font-mono font-bold"
+              />
+              <button
+                type="button"
+                onClick={() => handleQueryRedisVelocity()}
+                disabled={checkingVelocity}
+                className="px-3 py-2 bg-[#141413] text-white border border-[#141413] text-xs font-bold uppercase hover:bg-[#C86432] cursor-pointer"
+              >
+                {checkingVelocity ? "QUERYING..." : "[ ⚡ QUERY REDIS ]"}
+              </button>
+            </div>
+
+            {liveVelocity ? (
+              <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                <div className="p-2 bg-white border border-[#141413]">
+                  <span className="block text-[9px] text-[#141413]/60 uppercase font-bold">1-MIN</span>
+                  <span className={`font-mono font-black text-sm ${liveVelocity.count1m >= 5 ? 'text-[#C86432]' : 'text-[#141413]'}`}>
+                    {liveVelocity.count1m} TX
+                  </span>
+                </div>
+                <div className="p-2 bg-white border border-[#141413]">
+                  <span className="block text-[9px] text-[#141413]/60 uppercase font-bold">1-HOUR</span>
+                  <span className="font-mono font-black text-sm text-[#141413]">
+                    {liveVelocity.count1h} TX
+                  </span>
+                </div>
+                <div className="p-2 bg-white border border-[#141413]">
+                  <span className="block text-[9px] text-[#141413]/60 uppercase font-bold">24-HOURS</span>
+                  <span className="font-mono font-black text-sm text-[#141413]">
+                    {liveVelocity.count24h} TX
+                  </span>
+                </div>
+                <div className="p-2 bg-white border border-[#141413]">
+                  <span className="block text-[9px] text-[#141413]/60 uppercase font-bold">1-HR VOL</span>
+                  <span className="font-mono font-black text-sm text-[#141413]">
+                    ${liveVelocity.sumAmount1h.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[11px] text-[#141413]/60 font-mono italic text-center py-1">
+                Click &quot;[ ⚡ QUERY REDIS ]&quot; to read real-time keys from localhost:4000/v1/features/velocity
+              </div>
+            )}
+          </div>
         </div>
+
 
         {/* Right: Evaluated Output Box (6 Cols) */}
         <div className="xl:col-span-6 bg-[#FFFFFF] border-2 border-[#141413] p-6 flex flex-col gap-5">
@@ -457,8 +559,31 @@ export const RiskSimulatorSandbox: React.FC<RiskSimulatorSandboxProps> = ({
                 </div>
               </div>
 
+              {/* Feature Store Parameters Used */}
+              {evaluatedResult.velocity && (
+                <div className="grid grid-cols-4 gap-2 text-center text-xs p-2.5 bg-white border border-[#141413]">
+                  <div>
+                    <span className="block text-[9px] text-[#141413]/60 uppercase font-bold">1M VELOCITY</span>
+                    <span className="font-mono font-bold">{evaluatedResult.velocity.count1m} TX</span>
+                  </div>
+                  <div>
+                    <span className="block text-[9px] text-[#141413]/60 uppercase font-bold">1H VELOCITY</span>
+                    <span className="font-mono font-bold">{evaluatedResult.velocity.count1h} TX</span>
+                  </div>
+                  <div>
+                    <span className="block text-[9px] text-[#141413]/60 uppercase font-bold">HOURLY VOL</span>
+                    <span className="font-mono font-bold">${evaluatedResult.velocity.sumAmount1h.toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[9px] text-[#141413]/60 uppercase font-bold">MODEL VERSION</span>
+                    <span className="font-mono font-bold text-[10px] text-[#2A4B45]">{evaluatedResult.modelVersion}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Exact SHAP Breakdown Format */}
               <div className="border-2 border-[#141413] p-4 bg-[#FAF7F2]">
+
                 <div className="flex items-center justify-between pb-2 border-b border-[#141413]">
                   <span className="font-extrabold text-xs uppercase text-[#141413]">
                     WHY IS THIS TRANSACTION RISKY?

@@ -1,0 +1,25 @@
+{
+  "name": "explain-worker",
+  "version": "1.0.0",
+  "description": "Aedis Dual-Score Explainability Engine (SHAP + OpenRouter Compliance LLM)",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/worker.ts",
+    "dev": "tsx watch src/worker.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.5",
+    "ioredis": "^6.0.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

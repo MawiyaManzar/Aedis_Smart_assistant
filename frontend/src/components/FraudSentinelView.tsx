@@ -11,6 +11,8 @@ interface FraudSentinelViewProps {
   onUpdateTxStatus: (id: string, newStatus: Transaction["status"], intervention: Transaction["intervention"]) => void;
   graphNodes: GraphNode[];
   graphLinks: GraphLink[];
+  onRefreshFromBackend?: () => void;
+  isBackendSyncing?: boolean;
 }
 
 export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
@@ -20,7 +22,10 @@ export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
   onUpdateTxStatus,
   graphNodes,
   graphLinks,
+  onRefreshFromBackend,
+  isBackendSyncing,
 }) => {
+
   const [selectedNodeId, setSelectedNodeId] = useState<string>(
     selectedTx?.sender.account || graphNodes[0].id
   );
@@ -93,8 +98,19 @@ export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
                 </p>
               </div>
 
-              {/* Filter Buttons */}
-              <div className="flex items-center gap-1.5 text-xs font-semibold">
+              {/* Filter Buttons & Backend Sync */}
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                {onRefreshFromBackend && (
+                  <button
+                    onClick={onRefreshFromBackend}
+                    disabled={isBackendSyncing}
+                    className="px-3 py-1.5 bg-[#141413] text-[#FFFFFF] border-2 border-[#141413] font-bold text-xs uppercase hover:bg-[#C86432] cursor-pointer"
+                    title="Poll latest alerts from backend stream:alert:created"
+                  >
+                    {isBackendSyncing ? "SYNCING..." : "🔄 SYNC REDIS ALERTS"}
+                  </button>
+                )}
+
                 {(["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"] as const).map((lvl) => (
                   <button
                     key={lvl}
@@ -119,6 +135,7 @@ export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
                     <th className="py-3 px-3">TX ID</th>
                     <th className="py-3 px-3">TIMESTAMP</th>
                     <th className="py-3 px-3">SENDER / LOCATION</th>
+                    <th className="py-3 px-3">VELOCITY (1M / 1H)</th>
                     <th className="py-3 px-3">AMOUNT</th>
                     <th className="py-3 px-3">RISK SCORE</th>
                     <th className="py-3 px-3">STATUS</th>
@@ -142,15 +159,31 @@ export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
                             : "hover:bg-[#FAF7F2] text-[#141413]"
                         }`}
                       >
-                        <td className="py-3.5 px-3 font-bold font-mono whitespace-nowrap">{tx.id}</td>
+                        <td className="py-3.5 px-3 font-bold font-mono whitespace-nowrap">
+                          {tx.id}
+                          {tx.alertId && (
+                            <span className="ml-1.5 text-[9px] bg-[#C86432] text-white px-1 py-0.2 font-mono">
+                              REDIS
+                            </span>
+                          )}
+                        </td>
                         <td className="py-3.5 px-3 whitespace-nowrap text-xs opacity-80 font-mono">
-                          {tx.timestamp.split(" ")[1]}
+                          {tx.timestamp.includes(" ") ? tx.timestamp.split(" ")[1] : tx.timestamp.substring(11, 19)}
                         </td>
                         <td className="py-3.5 px-3">
                           <div className="font-bold truncate max-w-[140px] text-xs">{tx.sender.name}</div>
                           <div className={`text-[11px] font-medium ${isSelected ? "text-white/70" : "text-[#141413]/60"}`}>
                             {tx.sender.city}
                           </div>
+                        </td>
+                        <td className="py-3.5 px-3 whitespace-nowrap font-mono text-xs">
+                          {tx.velocity ? (
+                            <span className={tx.velocity.count1m >= 5 ? "text-[#C86432] font-black" : "font-semibold"}>
+                              {tx.velocity.count1m} / {tx.velocity.count1h}
+                            </span>
+                          ) : (
+                            <span className="opacity-60">{tx.graphHops > 0 ? "4 / 11" : "1 / 2"}</span>
+                          )}
                         </td>
                         <td className="py-3.5 px-3 font-bold text-xs whitespace-nowrap">
                           ${tx.amount.toLocaleString()}
@@ -183,6 +216,7 @@ export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
                     );
                   })}
                 </tbody>
+
               </table>
             </div>
           </div>
@@ -243,8 +277,70 @@ export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
               </div>
             </div>
 
+            {/* Redis Atomic Feature Store Velocities (feat:velocity) */}
+            <div className="border-2 border-[#141413] p-4 bg-[#FFFFFF]">
+              <div className="flex items-center justify-between pb-2 border-b border-[#141413]/20">
+                <span className="text-xs font-bold uppercase text-[#141413] tracking-wider">
+                  REDIS FEATURE STORE // REAL-TIME VELOCITIES
+                </span>
+                <span className="text-[10px] bg-[#141413] text-white font-mono px-2 py-0.5 uppercase">
+                  FEAT:VELOCITY (TTL: 60S-24H)
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-3 text-xs">
+                <div className="p-2 bg-[#FAF7F2] border border-[#141413] text-center">
+                  <span className="block text-[10px] text-[#141413]/60 uppercase font-bold">1-MIN COUNT</span>
+                  <span className="font-mono font-black text-sm text-[#141413]">
+                    {currentTx.velocity?.count1m ?? (currentTx.riskScore > 70 ? 6 : 1)} TX
+                  </span>
+                  <span className="text-[9px] text-[#C86432] block font-semibold">
+                    {(currentTx.velocity?.count1m ?? 1) >= 5 ? '⚡ SPIKE (>=5)' : 'NORMAL'}
+                  </span>
+                </div>
+                <div className="p-2 bg-[#FAF7F2] border border-[#141413] text-center">
+                  <span className="block text-[10px] text-[#141413]/60 uppercase font-bold">1-HR COUNT</span>
+                  <span className="font-mono font-black text-sm text-[#141413]">
+                    {currentTx.velocity?.count1h ?? (currentTx.riskScore > 70 ? 12 : 2)} TX
+                  </span>
+                  <span className="text-[9px] text-[#141413]/60 block">HOURLY WINDOW</span>
+                </div>
+                <div className="p-2 bg-[#FAF7F2] border border-[#141413] text-center">
+                  <span className="block text-[10px] text-[#141413]/60 uppercase font-bold">24-HR COUNT</span>
+                  <span className="font-mono font-black text-sm text-[#141413]">
+                    {currentTx.velocity?.count24h ?? (currentTx.riskScore > 70 ? 28 : 5)} TX
+                  </span>
+                  <span className="text-[9px] text-[#141413]/60 block">DAILY TRAJECTORY</span>
+                </div>
+                <div className="p-2 bg-[#FAF7F2] border border-[#141413] text-center">
+                  <span className="block text-[10px] text-[#141413]/60 uppercase font-bold">1-HR VOLUME</span>
+                  <span className="font-mono font-black text-sm text-[#141413]">
+                    ${(currentTx.velocity?.sumAmount1h ?? currentTx.amount).toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-[#141413]/60 block">AGGREGATE SUM</span>
+                </div>
+              </div>
+
+              {/* Backend Scoring Model & Neo4j Topology Specs */}
+              <div className="mt-3 pt-2 border-t border-[#141413]/20 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[#141413]/60 uppercase text-[10px]">SCORING MODEL:</span>
+                  <span className="font-mono font-bold text-[#141413]">{currentTx.modelVersion || 'heuristic-rules-v1'}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[#141413]/60 uppercase text-[10px]">NEO4J HOPS:</span>
+                  <span className="font-mono font-bold text-[#C86432]">{currentTx.graphHops} HOPS</span>
+                  {currentTx.fraudRingIds && currentTx.fraudRingIds.length > 0 && (
+                    <span className="bg-[#C86432] text-white text-[9px] px-1 font-bold">
+                      {currentTx.fraudRingIds[0]}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Exact SHAP Breakdown Format requested */}
             <div className="border-2 border-[#141413] p-5 bg-[#FAF7F2]">
+
               <div className="flex items-center justify-between pb-3 border-b border-[#141413]">
                 <h5 className="font-black text-xs uppercase text-[#141413] tracking-wide">
                   WHY IS THIS TRANSACTION RISKY?

@@ -37,7 +37,81 @@ export interface Transaction {
   guardrailsVerified: boolean;
   onnxLatencyMs: number;
   graphHops: number;
+  velocity?: {
+    count1m: number;
+    count1h: number;
+    count24h: number;
+    sumAmount1h: number;
+  };
+  fraudRingIds?: string[];
+  modelVersion?: string;
+  alertId?: string;
 }
+
+export interface BackendAlert {
+  streamEntryId: string;
+  alertId: string;
+  transactionId: string;
+  tenantId: string;
+  status: 'BLOCKED' | 'FLAGGED';
+  fraudScore: string;
+  graphHops: string;
+  fraudRingIds: string[];
+  velocity: {
+    count1m: number;
+    count1h: number;
+    count24h: number;
+    sumAmount1h: number;
+  };
+  modelVersion: string;
+  payload: {
+    transactionId: string;
+    fromAccountId: string;
+    toAccountId: string;
+    amount: number;
+    currency: string;
+    channel: string;
+    deviceId?: string;
+    ipAddress?: string;
+    timestamp: string;
+  };
+  timestamp: string;
+}
+
+export interface VelocityMetrics {
+  accountId: string;
+  count1m: number;
+  count1h: number;
+  count24h: number;
+  sumAmount1h: number;
+}
+
+export interface TelemetryData {
+  service: string;
+  status: string;
+  uptime: number;
+  memory: {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+  };
+  streams: {
+    rawStreamLength: number;
+    alertStreamLength: number;
+    resolutionStreamLength: number;
+    redisStatus: string;
+    rawStream: string;
+    alertStream: string;
+  };
+  slo: {
+    targetLatencyMs: number;
+    expectedOutcomeMs: number;
+    graphHopTimeoutMs: number;
+    mlInferenceTimeoutMs: number;
+  };
+  timestamp: string;
+}
+
 
 export interface BorrowerDistress {
   id: string;

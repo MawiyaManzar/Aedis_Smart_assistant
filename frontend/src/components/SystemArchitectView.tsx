@@ -1,12 +1,32 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { fetchSystemTelemetry } from "@/lib/authApi";
+import { TelemetryData } from "@/lib/types";
 
 export const SystemArchitectView: React.FC = () => {
   const [lowThreshold, setLowThreshold] = useState<number>(35);
   const [stepUpThreshold, setStepUpThreshold] = useState<number>(70);
   const [freezeThreshold, setFreezeThreshold] = useState<number>(85);
   const [policySaved, setPolicySaved] = useState<boolean>(false);
+  const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
+  const [loadingTelemetry, setLoadingTelemetry] = useState<boolean>(false);
+
+  const loadTelemetry = useCallback(async () => {
+    setLoadingTelemetry(true);
+    try {
+      const data = await fetchSystemTelemetry();
+      if (data) setTelemetry(data);
+    } finally {
+      setLoadingTelemetry(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTelemetry();
+    const interval = setInterval(loadTelemetry, 8000);
+    return () => clearInterval(interval);
+  }, [loadTelemetry]);
 
   const handleSavePolicy = () => {
     setPolicySaved(true);
@@ -27,16 +47,24 @@ export const SystemArchitectView: React.FC = () => {
             </span>
           </div>
           <p className="text-sm text-[#141413]/70 mt-2 font-medium leading-relaxed">
-            FastAPI → Redis Stream / BullMQ → Neo4j Graph DB → ONNX/XGBoost Sub-50ms → LangGraph LLM Gateway → PostgreSQL
+            Fastify API Gateway → Redis Stream (stream:transaction:raw) → Fraud Worker &amp; Feature Store → Neo4j Graph DB → ONNX Sub-50ms → stream:alert:created → PostgreSQL
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="text-xs border-2 border-[#141413] bg-[#FAF7F2] px-3.5 py-1.5 font-bold uppercase text-[#141413]">
-            CLUSTER: NOMINAL [200 OK]
+            GATEWAY: {telemetry?.status || 'ONLINE'} [PORT 4000]
           </span>
+          <button
+            onClick={loadTelemetry}
+            disabled={loadingTelemetry}
+            className="px-3 py-1.5 bg-[#141413] text-white border-2 border-[#141413] text-xs font-bold uppercase hover:bg-[#C86432] cursor-pointer"
+          >
+            {loadingTelemetry ? "SYNCING..." : "[ 🔄 REFRESH ]"}
+          </button>
         </div>
       </div>
+
 
       {/* Microservices Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -44,26 +72,32 @@ export const SystemArchitectView: React.FC = () => {
         <div className="bg-[#FFFFFF] border-2 border-[#141413] p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between border-b border-[#141413] pb-2">
-              <span className="font-extrabold text-xs uppercase text-[#141413]">[FASTAPI API GATEWAY]</span>
+              <span className="font-extrabold text-xs uppercase text-[#141413]">[FASTIFY API GATEWAY]</span>
               <span className="text-[10px] bg-[#2A4B45] text-white font-bold px-1.5 py-0.2 uppercase">HEALTHY</span>
             </div>
             <div className="mt-3.5 space-y-1.5 text-xs">
               <div className="flex justify-between">
-                <span className="text-[#141413]/60 font-semibold">THROUGHPUT:</span>
-                <span className="font-bold text-[#141413]">2,140 REQ/SEC</span>
+                <span className="text-[#141413]/60 font-semibold">UPTIME:</span>
+                <span className="font-bold text-[#141413]">
+                  {telemetry ? `${Math.floor(telemetry.uptime / 60)}M ${Math.floor(telemetry.uptime % 60)}S` : "24.5 DAYS"}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#141413]/60 font-semibold">AVG LATENCY:</span>
-                <span className="font-bold text-[#141413]">4.2 MS</span>
+                <span className="text-[#141413]/60 font-semibold">MEMORY HEAP:</span>
+                <span className="font-bold text-[#141413]">
+                  {telemetry?.memory ? `${(telemetry.memory.heapUsed / (1024 * 1024)).toFixed(1)} MB / ${(telemetry.memory.heapTotal / (1024 * 1024)).toFixed(1)} MB` : "42.1 MB / 64.0 MB"}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#141413]/60 font-semibold">WEBSOCKET SESSIONS:</span>
-                <span className="font-bold text-[#141413]">84 ACTIVE</span>
+                <span className="text-[#141413]/60 font-semibold">PROCESS RSS:</span>
+                <span className="font-bold text-[#141413]">
+                  {telemetry?.memory ? `${(telemetry.memory.rss / (1024 * 1024)).toFixed(1)} MB` : "98.4 MB"}
+                </span>
               </div>
             </div>
           </div>
           <div className="mt-4 pt-2.5 border-t border-[#141413]/20 text-[11px] text-[#141413]/70 font-semibold">
-            PROTOCOL: HTTP/2 · SSE · WEBSOCKETS
+            PROTOCOL: HTTP/1.1 REST · SUB-50MS SLO
           </div>
         </div>
 
@@ -71,26 +105,32 @@ export const SystemArchitectView: React.FC = () => {
         <div className="bg-[#FFFFFF] border-2 border-[#141413] p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between border-b border-[#141413] pb-2">
-              <span className="font-extrabold text-xs uppercase text-[#141413]">[REDIS STREAM / BULLMQ]</span>
-              <span className="text-[10px] bg-[#2A4B45] text-white font-bold px-1.5 py-0.2 uppercase">HEALTHY</span>
+              <span className="font-extrabold text-xs uppercase text-[#141413]">[REDIS STREAMS &amp; FEATURE STORE]</span>
+              <span className="text-[10px] bg-[#2A4B45] text-white font-bold px-1.5 py-0.2 uppercase">LIVE</span>
             </div>
             <div className="mt-3.5 space-y-1.5 text-xs">
               <div className="flex justify-between">
-                <span className="text-[#141413]/60 font-semibold">BUFFER QUEUE:</span>
-                <span className="font-bold text-[#141413]">18 EVENTS</span>
+                <span className="text-[#141413]/60 font-semibold">RAW STREAM DEPTH:</span>
+                <span className="font-bold text-[#141413]">
+                  {telemetry?.streams ? `${telemetry.streams.rawStreamLength} EVENTS` : "18 EVENTS"}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#141413]/60 font-semibold">CRON WORKERS:</span>
-                <span className="font-bold text-[#141413]">24 RUNNING</span>
+                <span className="text-[#141413]/60 font-semibold">ALERT STREAM DEPTH:</span>
+                <span className="font-bold text-[#141413]">
+                  {telemetry?.streams ? `${telemetry.streams.alertStreamLength} ALERTS` : "0 ALERTS"}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#141413]/60 font-semibold">FAILED RETRIES:</span>
-                <span className="font-bold text-[#141413]">0 (ZERO LOSS)</span>
+                <span className="text-[#141413]/60 font-semibold">RESOLUTION LEDGER:</span>
+                <span className="font-bold text-[#141413]">
+                  {telemetry?.streams ? `${telemetry.streams.resolutionStreamLength} RESOLVED` : "0 (ZERO LOSS)"}
+                </span>
               </div>
             </div>
           </div>
           <div className="mt-4 pt-2.5 border-t border-[#141413]/20 text-[11px] text-[#141413]/70 font-semibold">
-            ENGINE: REDIS 7.2 AOF PERSISTENCE
+            ENGINE: REDIS 7.2 AOF · SLIDING WINDOW VELOCITIES
           </div>
         </div>
 

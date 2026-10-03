@@ -4,6 +4,9 @@ import fastifyJwt from '@fastify/jwt';
 import { config } from './config.js';
 import { authRoutes } from './routes/auth.js';
 import { transactionRoutes } from './routes/transactions.js';
+import { alertRoutes } from './routes/alerts.js';
+import { featureRoutes } from './routes/features.js';
+import { telemetryRoutes } from './routes/telemetry.js';
 
 /**
  * App factory: Allows in-memory injection testing (zero network overhead in vitest)
@@ -39,6 +42,10 @@ export function buildApp(opts = {}): FastifyInstance {
   // 4. Register Feature Routes
   app.register(authRoutes, { prefix: '/v1/auth' });
   app.register(transactionRoutes, { prefix: '/v1/transactions' });
+  app.register(alertRoutes, { prefix: '/v1/alerts' });
+  app.register(featureRoutes, { prefix: '/v1/features' });
+  app.register(telemetryRoutes, { prefix: '/v1/telemetry' });
+
 
   return app;
 }

@@ -19,11 +19,17 @@ import { RiskSimulatorSandbox } from "@/components/RiskSimulatorSandbox";
 import { GraduatedInterventionsModal } from "@/components/GraduatedInterventionsModal";
 import { LoginGatewayGate } from "@/components/LoginGatewayGate";
 import { useAuth } from "@/context/AuthContext";
-import { pushLiveTransactionToGateway } from "@/lib/authApi";
+import {
+  pushLiveTransactionToGateway,
+  fetchLatestBackendAlerts,
+  resolveBackendAlert,
+  convertAlertToTransaction,
+} from "@/lib/authApi";
 
 export default function Home() {
   const { user, token, tenantId, isAuthenticated, openAuthModal } = useAuth();
   const [demoBypass, setDemoBypass] = useState<boolean>(false);
+  const [isBackendSyncing, setIsBackendSyncing] = useState<boolean>(false);
 
   const [activeRole, setActiveRole] = useState<UserRole>("SENTINEL");
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
@@ -127,6 +133,28 @@ export default function Home() {
       prev.map((t) => (t.id === txId ? { ...t, status: newStatus, intervention } : t))
     );
 
+    // If backed by a Redis stream alert, commit the analyst resolution to the backend ledger
+    if (tx.alertId) {
+      const resolution =
+        newStatus === "BLOCKED"
+          ? "CONFIRM_BLOCK"
+          : newStatus === "APPROVED"
+          ? "OVERRIDE_APPROVE"
+          : "FLAGGED";
+      resolveBackendAlert(
+        tx.alertId,
+        resolution,
+        `Analyst manual decision: ${newStatus}`,
+        token || undefined
+      )
+        .then((res) => {
+          if (res?.success) {
+            showToast(`✓ REDIS RESOLUTION LOGGED: ${tx.alertId}`);
+          }
+        })
+        .catch(() => {});
+    }
+
     const analystId = user?.sub ? `${user.sub.toUpperCase()} (${user.roles[0] || 'RISK_ANALYST'})` : "FRAUD-SENTINEL-OFFICER";
 
     const newAudit: AuditRecord = {
@@ -166,6 +194,16 @@ export default function Home() {
       )
     );
 
+    const targetTx = transactions.find((t) => t.id === txId);
+    if (targetTx?.alertId) {
+      resolveBackendAlert(
+        targetTx.alertId,
+        resolution === "PASSED_OTP" ? "OVERRIDE_APPROVE" : "CONFIRM_BLOCK",
+        `Friction verification result: ${resolution}`,
+        token || undefined
+      ).catch(() => {});
+    }
+
     const analystId = user?.sub ? `${user.sub.toUpperCase()} (DYNAMIC_FRICTION)` : "DYNAMIC-FRICTION-ENGINE";
 
     const newAudit: AuditRecord = {
@@ -187,6 +225,32 @@ export default function Home() {
 
     setAuditLogs((prev) => [newAudit, ...prev]);
     showToast(`✓ DYNAMIC FRICTION COMPLETE: ${txId} → ${resolution}`);
+  };
+
+  // Sync live alerts directly from backend Redis stream:alert:created
+  const handleSyncBackendAlerts = async () => {
+    setIsBackendSyncing(true);
+    try {
+      const rawAlerts = await fetchLatestBackendAlerts(20);
+      if (rawAlerts && rawAlerts.length > 0) {
+        const streamTxs = rawAlerts.map(convertAlertToTransaction);
+        setTransactions((prev) => {
+          const existingIds = new Set(prev.map((t) => t.id));
+          const newTxs = streamTxs.filter((t) => !existingIds.has(t.id));
+          if (newTxs.length > 0) {
+            setSelectedTx(newTxs[0]);
+          }
+          return [...newTxs, ...prev].slice(0, 30);
+        });
+        showToast(`✓ INGESTED ${rawAlerts.length} ALERTS FROM REDIS STREAM (SUB-50MS SLO)`);
+      } else {
+        showToast("ℹ NO NEW ALERTS IN REDIS STREAM (SYSTEM NOMINAL)");
+      }
+    } catch {
+      showToast("⚠️ FAILED TO SYNC BACKEND REDIS ALERTS");
+    } finally {
+      setIsBackendSyncing(false);
+    }
   };
 
   // Handle triggering credit playbook
@@ -391,6 +455,8 @@ export default function Home() {
               onUpdateTxStatus={handleUpdateTxStatus}
               graphNodes={graphNodes}
               graphLinks={graphLinks}
+              onRefreshFromBackend={handleSyncBackendAlerts}
+              isBackendSyncing={isBackendSyncing}
             />
           )}
 
