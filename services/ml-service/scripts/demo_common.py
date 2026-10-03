@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, NoReturn
 from uuid import UUID
 
+# Dedicated tenant so demos never pollute the shared graph seed tenant (SEED_TENANT_ID).
+DEMO_TENANT_ID = UUID("00000000-0000-4000-8000-0000000000d1")
 DEMO_TENANT_NAME = "Aedis Demo Tenant (synthetic data)"
 EXIT_UNREACHABLE = 2
 EXIT_HTTP_ERROR = 3

@@ -22,6 +22,7 @@ from uuid import UUID, uuid5
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from demo_common import (  # noqa: E402
+    DEMO_TENANT_ID,
     EXIT_DEPENDENCY,
     DemoError,
     admin_database_url,
@@ -37,10 +38,8 @@ from demo_common import (  # noqa: E402
 )
 
 from app.features.distress import build_distress_features  # noqa: E402
-from app.graph.seed import SEED_TENANT_ID  # noqa: E402
 from app.schemas.features import DistressFeatures, DistressFeatureSource  # noqa: E402
 
-DEMO_TENANT_ID = SEED_TENANT_ID
 NAMESPACE = UUID("00000000-0000-4000-8000-00000000d3a1")
 RNG_SEED = 20261003
 EVALUATION_DATE = date(2026, 2, 1)
