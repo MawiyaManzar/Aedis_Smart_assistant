@@ -11,7 +11,7 @@ import pytest
 
 from app.graph.client import GraphClient, GraphUnavailableError
 from app.graph.schema import EXPECTED_CONSTRAINTS, apply_schema
-from app.graph.seed import RING_ACCOUNTS, RING_DEVICE, SEED_TENANT_ID, apply_seed
+from app.graph.seed import RING_ACCOUNTS, RING_DEVICE, apply_seed
 from app.graph.sync import sync_transaction
 from app.schemas.transaction import TransactionEvent
 
@@ -159,7 +159,9 @@ def test_accounts_share_device_node(client: GraphClient, tenant: UUID) -> None:
     assert _counts(client, tenant, shared)["shares"] == 2
 
 
-def test_seed_is_deterministic_and_idempotent(client: GraphClient) -> None:
+def test_seed_is_deterministic_and_idempotent(client: GraphClient, tenant: UUID) -> None:
+    # Seeded into a private tenant: demos or other writers to the shared seed tenant cannot
+    # change the expected counts.
     def _snapshot(tx: object) -> tuple[int, int, int]:
         r = tx.run(  # type: ignore[attr-defined]
             """
@@ -170,13 +172,13 @@ def test_seed_is_deterministic_and_idempotent(client: GraphClient) -> None:
             MATCH (:Account {tenantId: $t})-[s:SHARES_DEVICE]->(:Device {id: $d})
             RETURN accounts, transfers, count(s) AS ring_shares
             """,
-            t=str(SEED_TENANT_ID),
+            t=str(tenant),
             d=RING_DEVICE,
         ).single()
         return r["accounts"], r["transfers"], r["ring_shares"]
 
-    apply_seed(client)
+    apply_seed(client, tenant)
     first = client.read(_snapshot)
-    apply_seed(client)
+    apply_seed(client, tenant)
     assert client.read(_snapshot) == first
     assert first == (6, 7, len(RING_ACCOUNTS))

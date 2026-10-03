@@ -36,8 +36,8 @@ uv run python scripts/demo_scam_ring.py http://localhost:8001 # explicit base UR
 
 What it does:
 
-1. Inserts the permanent demo tenant `00000000-0000-4000-8000-0000000000a1` (`ON CONFLICT DO NOTHING`; it is `app.graph.seed.SEED_TENANT_ID`, so the graph flags apply to it).
-2. Calls `apply_seed`: syncs the seed graph and sets `fraudRingId = ring-seed-001` on `mule-001`, `mule-002`, `mule-003`.
+1. Inserts the dedicated demo tenant `00000000-0000-4000-8000-0000000000d1` (`ON CONFLICT DO NOTHING`; `scripts/demo_common.py:DEMO_TENANT_ID`). Both demos use it, **not** the shared graph seed tenant `...0a1` (`app.graph.seed.SEED_TENANT_ID`), so demo accounts (`victim-*`, `merchant-*`) never alter the seed tenant's invariants that integration tests and the integration guide rely on.
+2. Calls `apply_seed(client, DEMO_TENANT_ID)`: syncs the seed graph into the demo tenant and sets `fraudRingId = ring-seed-001` on its `mule-001`, `mule-002`, `mule-003`.
 3. Replays 36 normal transfers (12 for each of `victim-001..003`, days 1-20 before the attack day) through `POST /v1/transactions/score`.
 4. Scores, per victim, one ordinary payment to a known merchant (control) and two 03:xx transfers into ring accounts from the ring's device and IP.
 5. For each probe prints status, probability, graph status and hops (read from `fraud_events.graph_hops`, since the HTTP response does not carry it), ring ids, suspicious accounts and the numeric SHAP drivers.

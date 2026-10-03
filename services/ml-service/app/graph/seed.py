@@ -23,9 +23,11 @@ _NAMESPACE = UUID("00000000-0000-4000-8000-00000000feed")
 _BASE_TIME = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
-def _event(index: int, source: str, target: str, **extra: str | None) -> TransactionEvent:
+def _event(
+    tenant_id: UUID, index: int, source: str, target: str, **extra: str | None
+) -> TransactionEvent:
     return TransactionEvent(
-        tenant_id=SEED_TENANT_ID,
+        tenant_id=tenant_id,
         transaction_id=uuid5(_NAMESPACE, f"seed-{index}"),
         from_account_id=source,
         to_account_id=target,
@@ -38,13 +40,15 @@ def _event(index: int, source: str, target: str, **extra: str | None) -> Transac
     )
 
 
-def seed_events() -> list[TransactionEvent]:
+def seed_events(tenant_id: UUID = SEED_TENANT_ID) -> list[TransactionEvent]:
     """Ordinary customers plus a three-account mule ring sharing a device and an IP."""
     events: list[TransactionEvent] = []
     ordinary = [("acct-001", "acct-002"), ("acct-002", "acct-003"), ("acct-003", "acct-001")]
     for position, (source, target) in enumerate(ordinary):
         events.append(
-            _event(position, source, target, device_id=f"device-{source}", ip_address=None)
+            _event(
+                tenant_id, position, source, target, device_id=f"device-{source}", ip_address=None
+            )
         )
     ring_pairs = [
         ("mule-001", "mule-002"),
@@ -52,23 +56,32 @@ def seed_events() -> list[TransactionEvent]:
         ("mule-003", "mule-001"),
     ]
     for offset, (source, target) in enumerate(ring_pairs, start=len(events)):
-        events.append(_event(offset, source, target, device_id=RING_DEVICE, ip_address=RING_IP))
+        events.append(
+            _event(tenant_id, offset, source, target, device_id=RING_DEVICE, ip_address=RING_IP)
+        )
     events.append(
-        _event(len(events), "acct-001", "mule-001", device_id="device-acct-001", ip_address=None)
+        _event(
+            tenant_id,
+            len(events),
+            "acct-001",
+            "mule-001",
+            device_id="device-acct-001",
+            ip_address=None,
+        )
     )
     return events
 
 
-def apply_seed(client: GraphClient) -> int:
+def apply_seed(client: GraphClient, tenant_id: UUID = SEED_TENANT_ID) -> int:
     """Sync the seed events and flag the ring accounts. Returns the event count."""
-    events = seed_events()
+    events = seed_events(tenant_id)
     for event in events:
         sync_transaction(client, event)
 
     def _flag(tx: ManagedTransaction) -> None:
         tx.run(
             "MATCH (a:Account {tenantId: $tenant}) WHERE a.id IN $ids SET a.fraudRingId = $ring",
-            tenant=str(SEED_TENANT_ID),
+            tenant=str(tenant_id),
             ids=list(RING_ACCOUNTS),
             ring=SEED_RING_ID,
         ).consume()

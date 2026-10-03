@@ -23,6 +23,7 @@ from uuid import UUID, uuid5
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from demo_common import (  # noqa: E402
+    DEMO_TENANT_ID,
     EXIT_DEPENDENCY,
     DemoError,
     admin_database_url,
@@ -40,11 +41,9 @@ from app.graph.seed import (  # noqa: E402
     RING_DEVICE,
     RING_IP,
     SEED_RING_ID,
-    SEED_TENANT_ID,
 )
 from app.schemas.transaction import TransactionEvent  # noqa: E402
 
-DEMO_TENANT_ID = SEED_TENANT_ID  # graph flags from apply_seed live under this tenant
 NAMESPACE = UUID("00000000-0000-4000-8000-00000000d3a0")
 RNG_SEED = 20260201
 BASE_TIME = datetime(2026, 2, 1, 0, 0, tzinfo=UTC)  # attack day; history is before this
@@ -165,7 +164,7 @@ def flag_seed_ring() -> int:
     client = GraphClient(settings.neo4j_uri, settings.neo4j_user, settings.neo4j_password)
     try:
         client.verify()
-        return apply_seed(client)
+        return apply_seed(client, DEMO_TENANT_ID)
     except GraphError as exc:
         raise DemoError(f"Neo4j unavailable: {exc}", EXIT_DEPENDENCY) from exc
     finally:
