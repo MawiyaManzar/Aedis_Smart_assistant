@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-sand: #F5EFEB;
+  --bg-sand-light: #FAF7F2;
+  --text-dark: #141413;
+  --egypt-terracotta: #C86432;
+  --egypt-teal: #2A4B45;
+  --border-dark: #141413;
+}
+
+body {
+  background-color: #F5EFEB;
+  color: #141413;
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+}
+
+/* Brutalist-Minimalist Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F5EFEB;
+  border-left: 1px solid #141413;
+}
+::-webkit-scrollbar-thumb {
+  background: #141413;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #141413;
+}
+
+/* Strict Brutalist-Minimalist Solid Tokens (Zero Gradients, Flat Solid States) */
+.brutal-card {
+  background-color: #FFFFFF;
+  color: #141413;
+  border: 2px solid #141413;
+}
+
+.brutal-card-sand {
+  background-color: #FAF7F2;
+  color: #141413;
+  border: 2px solid #141413;
+}
+
+.brutal-card-dark {
+  background-color: #141413;
+  color: #F5EFEB;
+  border: 2px solid #141413;
+}
+
+.brutal-btn-primary {
+  background-color: #141413;
+  color: #FFFFFF;
+  border: 2px solid #141413;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: none !important;
+}
+
+.brutal-btn-primary:hover {
+  background-color: #FFFFFF;
+  color: #141413;
+}
+
+.brutal-btn-secondary {
+  background-color: #FFFFFF;
+  color: #141413;
+  border: 2px solid #141413;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: none !important;
+}
+
+.brutal-btn-secondary:hover {
+  background-color: #141413;
+  color: #FFFFFF;
+}
+
+.brutal-btn-terracotta {
+  background-color: #C86432;
+  color: #FFFFFF;
+  border: 2px solid #141413;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: none !important;
+}
+
+.brutal-btn-terracotta:hover {
+  background-color: #141413;
+  color: #FFFFFF;
+}
+
+.brutal-badge {
+  background: #FAF7F2;
+  color: #141413;
+  border: 1px solid #141413;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.brutal-badge-dark {
+  background: #141413;
+  color: #FFFFFF;
+  border: 1px solid #141413;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.brutal-badge-terracotta {
+  background: #C86432;
+  color: #FFFFFF;
+  border: 1px solid #141413;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.brutal-badge-teal {
+  background: #2A4B45;
+  color: #FFFFFF;
+  border: 1px solid #141413;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+}
