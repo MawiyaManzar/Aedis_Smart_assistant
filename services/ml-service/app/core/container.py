@@ -15,6 +15,7 @@ from sqlalchemy import Engine, create_engine
 from app.core.config import Settings
 from app.explainability.shap_explainer import ShapExplainService
 from app.graph.client import GraphClient
+from app.graph.service import GraphSyncService
 from app.inference.distress import DistressInferenceService
 from app.inference.fraud import FraudInferenceService
 from app.models.loaders import (
@@ -48,6 +49,7 @@ class ServiceContainer:
             settings.neo4j_password,
             connection_timeout=settings.readiness_timeout_seconds,
         )
+        self.graph_sync = GraphSyncService(self.graph)
         self.fraud_loader = OnnxFraudModelLoader(
             settings.artifacts_dir, settings.fraud_model_version
         )
