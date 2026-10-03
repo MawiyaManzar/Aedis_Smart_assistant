@@ -148,7 +148,7 @@ Roles:
 - `aedis_admin` (schema owner) runs migrations. Set `MIGRATION_DATABASE_URL` for it.
 - `aedis_app` is what the service uses (`DATABASE_URL`). It has DML on business tables but only `SELECT`/`INSERT` on `audit_log`. Its password comes from `AEDIS_APP_PASSWORD`.
 
-Integration tests (need the stack and `uv run alembic upgrade head`) live in `tests/integration`. They skip when Postgres is unreachable; set `AEDIS_REQUIRE_INTEGRATION=1` to make that a failure. They run inside rolled-back transactions and never write permanent rows (audit rows cannot be deleted).
+Integration tests (need the stack and `uv run alembic upgrade head`) live in `tests/integration`. They skip when Postgres is unreachable; set `AEDIS_REQUIRE_INTEGRATION=1` to make that a failure. They run inside rolled-back transactions and never write permanent rows (audit rows cannot be deleted). Exception: `tests/integration/test_e2e_flow.py` (M17 end-to-end flow) uses two permanent test tenants (`...0e17`, `...0e18`) because it writes audit rows, and cleans up all of its mutable rows, Neo4j nodes and Redis keys.
 
 ## Model artifacts
 
