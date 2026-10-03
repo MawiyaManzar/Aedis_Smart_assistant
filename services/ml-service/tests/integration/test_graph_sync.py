@@ -10,10 +10,10 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.graph.client import GraphClient, GraphUnavailableError
-from app.graph.models import TransactionEvent
 from app.graph.schema import EXPECTED_CONSTRAINTS, apply_schema
 from app.graph.seed import RING_ACCOUNTS, RING_DEVICE, SEED_TENANT_ID, apply_seed
 from app.graph.sync import sync_transaction
+from app.schemas.transaction import TransactionEvent
 
 
 @pytest.fixture(scope="module")

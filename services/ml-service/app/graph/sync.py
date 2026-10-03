@@ -19,7 +19,8 @@ from typing import Any
 from neo4j import ManagedTransaction
 
 from app.graph.client import GraphClient
-from app.graph.models import SyncResult, TransactionEvent
+from app.graph.models import SyncResult
+from app.schemas.transaction import TransactionEvent
 
 _ACCOUNTS_AND_TRANSFER = """
 MERGE (a:Account {id: $from_id, tenantId: $tenant_id})

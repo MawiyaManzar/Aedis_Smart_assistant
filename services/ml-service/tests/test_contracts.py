@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -7,12 +6,10 @@ from fastapi.testclient import TestClient
 
 from app.db.sql_script import split_sql
 from app.features.distress import DistressFeatureBuilder
-from app.features.fraud import FraudFeatureBuilder
 from app.schemas.features import (
     DistressFeatures,
     DistressFeatureSource,
     FraudFeatures,
-    FraudFeatureSource,
 )
 
 TRANSACTION_ID = "8b0b0d0e-6c1a-4f0a-9c2d-1a2b3c4d5e6f"
@@ -65,17 +62,7 @@ def test_distress_feature_names() -> None:
     ]
 
 
-def test_feature_builders_are_not_implemented() -> None:
-    fraud_source = FraudFeatureSource(
-        tenant_id=UUID("11111111-1111-1111-1111-111111111111"),
-        transaction_id=UUID(TRANSACTION_ID),
-        amount=10,
-        currency="USD",
-        channel="mobile",
-        occurred_at=datetime.fromisoformat("2026-10-03T12:00:00+00:00"),
-        from_account_id="acct-1",
-        to_account_id="acct-2",
-    )
+def test_distress_builder_is_not_implemented_yet() -> None:
     distress_source = DistressFeatureSource(
         borrower_id=UUID(BORROWER_ID),
         avg_balance_30d=1,
@@ -84,8 +71,6 @@ def test_feature_builders_are_not_implemented() -> None:
         atm_28d=4,
         new_high_interest_count=0,
     )
-    with pytest.raises(NotImplementedError):
-        FraudFeatureBuilder().build(fraud_source)
     with pytest.raises(NotImplementedError):
         DistressFeatureBuilder().build(distress_source)
 

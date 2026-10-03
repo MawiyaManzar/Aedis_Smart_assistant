@@ -1,41 +1,30 @@
-"""Feature contracts for the next implementation phase."""
+"""Feature contracts. Field order here is the model input order (see ``app.features``)."""
 
-from datetime import datetime
+from __future__ import annotations
+
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import Channel
-
 
 class FraudFeatures(BaseModel):
-    """Model inputs named by the fraud architecture. Values are supplied by the caller."""
+    """Fraud model inputs. The meaning of each field is documented in docs/dev1/fraud-features.md.
+
+    ``graph_hops``: 0 = the sender account itself is flagged in a fraud ring, 1..3 = shortest
+    relationship path to a flagged account, 4 = no flagged account within 3 hops, -1 = graph
+    lookup unavailable (degraded).
+    """
 
     amount_zscore: float
-    velocity_1h: float
-    velocity_24h: float
-    graph_hops: int = Field(ge=0)
+    velocity_1h: float = Field(ge=0)
+    velocity_24h: float = Field(ge=0)
+    graph_hops: int = Field(ge=-1, le=4)
     is_new_beneficiary: bool
     device_age_days: float = Field(ge=0)
-    ip_country_risk: float
+    ip_country_risk: float = Field(ge=0, le=1)
     hour_of_day: int = Field(ge=0, le=23)
     day_of_week: int = Field(ge=0, le=6)
-    channel_risk_score: float
-
-
-class FraudFeatureSource(BaseModel):
-    """Raw transaction fields already defined by the API gateway contract."""
-
-    tenant_id: UUID
-    transaction_id: UUID
-    amount: float = Field(gt=0)
-    currency: str = Field(min_length=3, max_length=3)
-    channel: Channel
-    occurred_at: datetime
-    from_account_id: str = Field(min_length=1)
-    to_account_id: str = Field(min_length=1)
-    device_id: str | None = None
-    ip_address: str | None = None
+    channel_risk_score: float = Field(ge=0, le=1)
 
 
 class DistressFeatures(BaseModel):

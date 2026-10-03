@@ -11,8 +11,8 @@ from uuid import UUID, uuid5
 from neo4j import ManagedTransaction
 
 from app.graph.client import GraphClient
-from app.graph.models import TransactionEvent
 from app.graph.sync import sync_transaction
+from app.schemas.transaction import TransactionEvent
 
 SEED_TENANT_ID = UUID("00000000-0000-4000-8000-0000000000a1")
 SEED_RING_ID = "ring-seed-001"

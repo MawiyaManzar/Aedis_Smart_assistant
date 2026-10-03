@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.graph.models import TransactionEvent
+from app.schemas.transaction import TransactionEvent
 
 GATEWAY_PAYLOAD = {
     "transactionId": "8b0b0d0e-6c1a-4f0a-9c2d-1a2b3c4d5e6f",
