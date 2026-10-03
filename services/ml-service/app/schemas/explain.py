@@ -5,14 +5,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import EntityType, InferenceMode, ModelName
+from app.schemas.common import EntityType, ModelName
 from app.schemas.features import DistressFeatures, FraudFeatures
 
 
 class ShapDriver(BaseModel):
     feature: str
-    value: float | int | bool | None = None
-    shap_contribution: float | None = None
+    value: float
+    shap_contribution: float = Field(description="Log-odds contribution; positive raises risk")
 
 
 class FraudExplainRequest(BaseModel):
@@ -41,8 +41,7 @@ class ShapExplainResponse(BaseModel):
     entity_type: EntityType
     entity_id: UUID
     model_name: ModelName
-    model_version: str = Field(description="unset until a real explainer is loaded")
-    inference_mode: InferenceMode
+    model_version: str
+    base_value: float = Field(description="Expected model output (log-odds) over background")
     top_drivers: list[ShapDriver]
-    latency_ms: float = Field(description="Handler elapsed time, not a model benchmark")
-    detail: str
+    inference_latency_ms: float = Field(description="Measured SHAP computation time, ms")

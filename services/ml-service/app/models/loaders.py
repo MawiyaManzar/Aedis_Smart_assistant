@@ -17,6 +17,7 @@ from typing import Any
 import lightgbm as lgb
 import numpy as np
 import onnxruntime as ort
+import xgboost as xgb
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ class OnnxFraudModelLoader(ModelLoader):
     def __init__(self, artifacts_dir: Path, version: str) -> None:
         super().__init__(artifacts_dir, version)
         self._session: ort.InferenceSession | None = None
+        self.native_booster: xgb.Booster | None = None
         self._input_name = "features"
 
     def _load_weights(self) -> None:
@@ -116,6 +118,11 @@ class OnnxFraudModelLoader(ModelLoader):
             raise ModelArtifactError(f"cannot create ONNX session: {exc}") from exc
         self._input_name = session.get_inputs()[0].name
         self._session = session
+        native_path = self.artifact_dir / "model.json"
+        if native_path.is_file():  # same trees as the ONNX model; used by SHAP
+            booster = xgb.Booster()
+            booster.load_model(native_path)
+            self.native_booster = booster
         # Warm-up so the first real request does not pay one-off initialisation cost.
         self.predict_proba(np.zeros((1, len(FRAUD_FEATURE_ORDER)), dtype=np.float32))
 
