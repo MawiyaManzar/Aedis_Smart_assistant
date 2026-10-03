@@ -19,6 +19,14 @@ class FraudInferenceService:
     def __init__(self, loader: OnnxFraudModelLoader) -> None:
         self._loader = loader
 
+    @property
+    def model_version(self) -> str:
+        return self._loader.version
+
+    @property
+    def feature_version(self) -> str:
+        return str(self._loader.metadata.get("feature_version", "unknown"))
+
     def _require_loaded(self) -> None:
         if not self._loader.is_loaded:
             raise ModelNotLoadedError(

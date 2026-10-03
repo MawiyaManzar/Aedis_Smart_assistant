@@ -7,6 +7,7 @@ from collections.abc import Iterator
 
 import psycopg
 import pytest
+from sqlalchemy import Engine, create_engine
 
 
 def _dsn(url: str) -> str:
@@ -59,3 +60,12 @@ def app_conn() -> Iterator[psycopg.Connection]:
     finally:
         conn.rollback()
         conn.close()
+
+
+@pytest.fixture
+def app_engine() -> Iterator[Engine]:
+    """SQLAlchemy engine as aedis_app (skips if Postgres is unreachable)."""
+    _connect(_app_url()).close()
+    engine = create_engine(_app_url())
+    yield engine
+    engine.dispose()

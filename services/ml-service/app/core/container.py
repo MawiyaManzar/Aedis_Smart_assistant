@@ -11,14 +11,17 @@ import logging
 from fastapi import Request
 from redis import Redis
 from sqlalchemy import Engine, create_engine
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
+from app.db.repositories import ModelVersionRepository
 from app.explainability.shap_explainer import ShapExplainService
 from app.graph.client import GraphClient
 from app.graph.queries import GraphEnricher
 from app.graph.service import GraphSyncService
 from app.inference.distress import DistressInferenceService
 from app.inference.fraud import FraudInferenceService
+from app.inference.pipeline import TransactionScoringService
 from app.models.loaders import (
     LightGbmDistressModelLoader,
     ModelArtifactError,
@@ -61,6 +64,9 @@ class ServiceContainer:
         self.fraud = FraudInferenceService(self.fraud_loader)
         self.distress = DistressInferenceService(self.distress_loader)
         self.explainer = ShapExplainService(self.fraud_loader, self.distress_loader)
+        self.scoring = TransactionScoringService(
+            self.engine, self.fraud, self.graph_enricher, self.graph_sync, self.explainer
+        )
 
     @property
     def loaders(self) -> tuple[ModelLoader, ...]:
@@ -83,6 +89,17 @@ class ServiceContainer:
                         "reason": str(exc),
                     },
                 )
+
+    def register_models(self) -> None:
+        """Record loaded model artifacts in ``model_versions`` (best effort, idempotent)."""
+        repo = ModelVersionRepository()
+        try:
+            with self.engine.begin() as conn:
+                for loader in self.loaders:
+                    if loader.is_loaded:
+                        repo.register(conn, loader.metadata, str(loader.artifact_dir))
+        except SQLAlchemyError as exc:
+            logger.warning("model_registration_failed", extra={"reason": str(exc)})
 
     def model_statuses(self) -> list[ModelStatus]:
         return [loader.status() for loader in self.loaders]

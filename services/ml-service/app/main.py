@@ -26,6 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         container = ServiceContainer(settings)
         container.load_models()  # once per process, never per request
+        container.register_models()
         application.state.container = container
         logger.info("service_started", extra={"version": settings.service_version})
         try:
