@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import InferenceMode, RiskBand
+from app.schemas.common import RiskBand
 from app.schemas.features import DistressFeatures
 
 
@@ -21,14 +21,13 @@ class DistressBatchRequest(BaseModel):
 
 class DistressScoreResult(BaseModel):
     borrower_id: UUID
-    distress_score: int | None = Field(description="Null while inference is a contract stub")
-    risk_band: RiskBand | None
+    distress_score: int = Field(ge=0, le=100)
+    risk_band: RiskBand
 
 
 class DistressBatchResponse(BaseModel):
-    model_version: str = Field(description="unset until a real LightGBM artifact is loaded")
-    inference_mode: InferenceMode
+    model_version: str
+    feature_version: str
     evaluation_date: date
     scores: list[DistressScoreResult]
-    latency_ms: float = Field(description="Handler elapsed time, not a model benchmark")
-    detail: str
+    inference_latency_ms: float = Field(description="Measured LightGBM predict time, ms")

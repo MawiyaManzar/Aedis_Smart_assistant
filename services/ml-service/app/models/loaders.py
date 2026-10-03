@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import lightgbm as lgb
 import numpy as np
 import onnxruntime as ort
 
@@ -127,6 +128,30 @@ class OnnxFraudModelLoader(ModelLoader):
 
 
 class LightGbmDistressModelLoader(ModelLoader):
-    """Distress model. Booster loading is added with the distress milestone."""
+    """Distress model: a LightGBM booster loaded once at startup."""
 
     name = "distress"
+
+    def __init__(self, artifacts_dir: Path, version: str) -> None:
+        super().__init__(artifacts_dir, version)
+        self.booster: lgb.Booster | None = None
+
+    def _load_weights(self) -> None:
+        from app.features.distress import DISTRESS_FEATURE_ORDER
+
+        if self.metadata.get("feature_list") != list(DISTRESS_FEATURE_ORDER):
+            raise ModelArtifactError(
+                "artifact feature_list does not match the serving feature order"
+            )
+        path = self.artifact_dir / str(self.metadata.get("weights_file", "model.txt"))
+        if not path.is_file():
+            raise ModelArtifactNotFound(f"distress weights not found at {path}")
+        try:
+            self.booster = lgb.Booster(model_file=str(path))
+        except lgb.basic.LightGBMError as exc:
+            raise ModelArtifactError(f"cannot load LightGBM model: {exc}") from exc
+
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        if self.booster is None:
+            raise ModelArtifactError("distress booster is not initialised")
+        return np.asarray(self.booster.predict(x), dtype=np.float64)

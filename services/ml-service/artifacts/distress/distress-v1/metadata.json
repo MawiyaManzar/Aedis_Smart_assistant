@@ -1,0 +1,41 @@
+{
+  "model_name": "distress",
+  "model_version": "distress-v1",
+  "feature_version": "distress-features-v1",
+  "feature_list": [
+    "avg_balance_30d",
+    "avg_balance_60d",
+    "balance_drop_pct",
+    "atm_spike_ratio",
+    "new_credit_count"
+  ],
+  "weights_file": "model.txt",
+  "trained_at": "2026-10-03T18:27:43+00:00",
+  "data_source": "synthetic",
+  "data_seed": 42,
+  "lightgbm_version": "4.7.0",
+  "params": {
+    "objective": "binary",
+    "learning_rate": 0.05,
+    "num_leaves": 15,
+    "min_data_in_leaf": 20,
+    "feature_fraction": 0.9,
+    "bagging_fraction": 0.9,
+    "bagging_freq": 1,
+    "num_threads": 1,
+    "deterministic": true,
+    "force_row_wise": true,
+    "verbosity": -1
+  },
+  "score_definition": "round(100 * P(distress)); bands 0-39 LOW, 40-59 MEDIUM, 60-74 HIGH, 75-100 CRITICAL",
+  "metrics": {
+    "evaluation_data": "SYNTHETIC test split (last 15%). Not real-world performance.",
+    "rows": 900,
+    "positive_rate": 0.1988888888888889,
+    "roc_auc": 0.8357340441193563,
+    "pr_auc": 0.5150450816255703,
+    "precision_at_0.5": 0.592391304347826,
+    "recall_at_0.5": 0.6089385474860335,
+    "best_iteration": 67
+  }
+}

@@ -1,7 +1,6 @@
 from pathlib import Path
 from uuid import UUID
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.db.sql_script import split_sql
@@ -62,7 +61,7 @@ def test_distress_feature_names() -> None:
     ]
 
 
-def test_distress_builder_is_not_implemented_yet() -> None:
+def test_distress_builder_produces_model_features() -> None:
     distress_source = DistressFeatureSource(
         borrower_id=UUID(BORROWER_ID),
         avg_balance_30d=1,
@@ -71,8 +70,8 @@ def test_distress_builder_is_not_implemented_yet() -> None:
         atm_28d=4,
         new_high_interest_count=0,
     )
-    with pytest.raises(NotImplementedError):
-        DistressFeatureBuilder().build(distress_source)
+    features = DistressFeatureBuilder().build(distress_source)
+    assert features.balance_drop_pct == 50.0
 
 
 def test_distress_without_model_is_503(client: TestClient) -> None:
