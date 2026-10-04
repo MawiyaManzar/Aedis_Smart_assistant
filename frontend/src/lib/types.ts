@@ -46,6 +46,8 @@ export interface Transaction {
   fraudRingIds?: string[];
   modelVersion?: string;
   alertId?: string;
+  /** Where riskScore came from. Omitted means the ML model. */
+  scoreSource?: 'MODEL' | 'HEURISTIC';
 }
 
 export interface BackendAlert {
@@ -213,6 +215,8 @@ export interface BorrowerDistress {
   nlpExplanation: string;
   recommendedAction: string;
   cashFlowHistory: Array<{ day: string; balance: number; withdrawals: number }>;
+  /** Where distressScore came from. Omitted means the ML model. */
+  scoreSource?: 'MODEL' | 'HEURISTIC';
 }
 
 export interface GraphNode {
