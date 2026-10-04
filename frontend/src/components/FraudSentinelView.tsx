@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import { Transaction, GraphNode, GraphLink } from "@/lib/types";
 import { Neo4jGraphVisualizer } from "./Neo4jGraphVisualizer";
+import { ExplanationPanel } from "./ExplanationPanel";
+import { buildFraudFacts } from "@/lib/explain/facts";
 
 interface FraudSentinelViewProps {
   transactions: Transaction[];
@@ -277,6 +279,9 @@ export const FraudSentinelView: React.FC<FraudSentinelViewProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Plain-English explanation of the values above (numbers stay visible) */}
+            <ExplanationPanel facts={buildFraudFacts(currentTx)} />
 
             {/* LangGraph Generated NLP Audit Summary */}
             <div className="border-2 border-[#141413] p-4 bg-[#FFFFFF]">
