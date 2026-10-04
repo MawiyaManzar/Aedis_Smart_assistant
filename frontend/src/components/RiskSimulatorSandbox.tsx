@@ -209,6 +209,7 @@ export const RiskSimulatorSandbox: React.FC<RiskSimulatorSandboxProps> = ({
         },
         fraudRingIds: beneficiaryType === "NEW_MULE" ? ["MULE-RING-ALPHA-07"] : [],
         modelVersion: "heuristic-rules-v1",
+        scoreSource: "HEURISTIC",
       };
 
       setEvaluatedResult(generatedTx);

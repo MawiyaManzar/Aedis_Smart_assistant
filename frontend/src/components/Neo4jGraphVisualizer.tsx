@@ -1,7 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { GraphNode, GraphLink } from "@/lib/types";
+
+const BASE_W = 740;
+const BASE_H = 480;
+const MIN_ZOOM = 0.6;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 1.25;
+const DRAG_THRESHOLD_PX = 4;
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 interface Neo4jGraphVisualizerProps {
   nodes: GraphNode[];
@@ -18,6 +27,113 @@ export const Neo4jGraphVisualizer: React.FC<Neo4jGraphVisualizerProps> = ({
 }) => {
   const [filterType, setFilterType] = useState<string>("ALL");
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  // Pan = offset of the view centre from the graph centre, in graph (viewBox) units.
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(
+    null
+  );
+  const dragMovedRef = useRef(false);
+
+  const viewW = BASE_W / zoomLevel;
+  const viewH = BASE_H / zoomLevel;
+
+  // Keep the viewport inside the graph when zoomed in; centred when zoomed out.
+  const clampPan = useCallback((x: number, y: number, zoom: number) => {
+    const maxX = Math.max(0, (BASE_W - BASE_W / zoom) / 2);
+    const maxY = Math.max(0, (BASE_H - BASE_H / zoom) / 2);
+    return { x: clamp(x, -maxX, maxX), y: clamp(y, -maxY, maxY) };
+  }, []);
+
+  // Zoom to `next`, keeping the point under `focus` (graph coordinates) fixed on screen.
+  const zoomTo = useCallback(
+    (next: number, focus?: { x: number; y: number }) => {
+      const target = clamp(next, MIN_ZOOM, MAX_ZOOM);
+      if (target === zoomLevel) return;
+      if (!focus) {
+        setZoomLevel(target);
+        setPan((p) => clampPan(p.x, p.y, target));
+        return;
+      }
+      const ratio = zoomLevel / target;
+      const centreX = BASE_W / 2 + pan.x;
+      const centreY = BASE_H / 2 + pan.y;
+      const newCentreX = focus.x - (focus.x - centreX) * ratio;
+      const newCentreY = focus.y - (focus.y - centreY) * ratio;
+      setZoomLevel(target);
+      setPan(clampPan(newCentreX - BASE_W / 2, newCentreY - BASE_H / 2, target));
+    },
+    [zoomLevel, pan, clampPan]
+  );
+
+  const resetView = useCallback(() => {
+    setZoomLevel(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  // Ctrl/Cmd + wheel zooms toward the cursor. Plain wheel still scrolls the page.
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const fx = (e.clientX - rect.left) / rect.width;
+      const fy = (e.clientY - rect.top) / rect.height;
+      const focus = {
+        x: BASE_W / 2 + pan.x - viewW / 2 + fx * viewW,
+        y: BASE_H / 2 + pan.y - viewH / 2 + fy * viewH,
+      };
+      zoomTo(zoomLevel * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP), focus);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoomLevel, pan, viewW, viewH, zoomTo]);
+
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    dragMovedRef.current = false;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const drag = dragRef.current;
+    if (!drag || zoomLevel <= 1) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!dragMovedRef.current && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+    dragMovedRef.current = true;
+    setIsDragging(true);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setPan(
+      clampPan(
+        drag.panX - dx * (viewW / rect.width),
+        drag.panY - dy * (viewH / rect.height),
+        zoomLevel
+      )
+    );
+  };
+
+  const endDrag = () => {
+    dragRef.current = null;
+    setIsDragging(false);
+  };
+
+  const handleNodeClick = (node: GraphNode) => {
+    if (dragMovedRef.current) return; // a pan gesture, not a click
+    onSelectNode(node);
+  };
+
+  const handleCanvasKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "+" || e.key === "=") zoomTo(zoomLevel * ZOOM_STEP);
+    else if (e.key === "-" || e.key === "_") zoomTo(zoomLevel / ZOOM_STEP);
+    else if (e.key === "0") resetView();
+  };
+
+  const controlBtn =
+    "w-8 h-8 flex items-center justify-center bg-[#FFFFFF] text-[#141413] border border-[#141413] font-extrabold text-base leading-none hover:bg-[#141413] hover:text-white disabled:opacity-40 disabled:hover:bg-[#FFFFFF] disabled:hover:text-[#141413] disabled:cursor-not-allowed cursor-pointer";
 
   const filteredNodes = nodes.filter((n) => {
     if (filterType === "ALL") return true;
@@ -60,36 +176,81 @@ export const Neo4jGraphVisualizer: React.FC<Neo4jGraphVisualizerProps> = ({
               {type}
             </button>
           ))}
-          <div className="ml-2 flex items-center gap-1 border-l border-[#141413] pl-2">
-            <button
-              onClick={() => setZoomLevel((z) => Math.max(0.8, z - 0.1))}
-              className="px-2 py-0.5 bg-[#FAF7F2] text-[#141413] border border-[#141413] font-bold hover:bg-[#141413] hover:text-white cursor-pointer text-xs"
-            >
-              [-]
-            </button>
-            <span className="text-[11px] font-mono px-1">{Math.round(zoomLevel * 100)}%</span>
-            <button
-              onClick={() => setZoomLevel((z) => Math.min(1.4, z + 0.1))}
-              className="px-2 py-0.5 bg-[#FAF7F2] text-[#141413] border border-[#141413] font-bold hover:bg-[#141413] hover:text-white cursor-pointer text-xs"
-            >
-              [+]
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Main Graph Canvas Area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* SVG Interactive Canvas */}
-        <div className="lg:col-span-2 border-2 border-[#141413] bg-[#FAF7F2] relative min-h-[380px] flex items-center justify-center overflow-hidden">
+        <div
+          className="lg:col-span-2 border-2 border-[#141413] bg-[#FAF7F2] relative min-h-[380px] flex items-center justify-center overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[#C86432]"
+          tabIndex={0}
+          onKeyDown={handleCanvasKeyDown}
+          aria-label="Fraud graph. Use plus and minus to zoom, zero to reset."
+        >
           <div className="absolute top-2 left-2 z-10 text-[10px] font-bold bg-[#FFFFFF] border border-[#141413] px-2 py-1 uppercase text-[#141413]">
             GRAPH TOPOLOGY · CLICK TO INSPECT NODE
           </div>
 
+          {/* Zoom controls */}
+          <div
+            className="absolute top-2 right-2 z-10 flex flex-col items-stretch gap-1"
+            role="group"
+            aria-label="Graph zoom controls"
+          >
+            <button
+              type="button"
+              onClick={() => zoomTo(zoomLevel * ZOOM_STEP)}
+              disabled={zoomLevel >= MAX_ZOOM}
+              className={controlBtn}
+              title="Zoom in (+)"
+              aria-label="Zoom in"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomTo(zoomLevel / ZOOM_STEP)}
+              disabled={zoomLevel <= MIN_ZOOM}
+              className={controlBtn}
+              title="Zoom out (-)"
+              aria-label="Zoom out"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              onClick={resetView}
+              disabled={zoomLevel === 1 && pan.x === 0 && pan.y === 0}
+              className={`${controlBtn} text-[9px] tracking-tight`}
+              title="Reset zoom (0)"
+              aria-label="Reset zoom"
+            >
+              1:1
+            </button>
+            <span
+              className="text-[10px] font-mono font-bold text-center bg-[#FFFFFF] border border-[#141413] px-1 py-0.5 text-[#141413]"
+              aria-live="polite"
+            >
+              {Math.round(zoomLevel * 100)}%
+            </span>
+          </div>
+
+          <div className="absolute bottom-2 left-2 z-10 text-[9px] font-bold bg-[#FFFFFF]/90 border border-[#141413] px-2 py-0.5 uppercase text-[#141413]/70 pointer-events-none">
+            {zoomLevel > 1 ? "DRAG TO PAN · " : ""}CTRL + SCROLL TO ZOOM
+          </div>
+
           <svg
-            className="w-full h-[380px] cursor-crosshair select-none"
-            viewBox="0 0 740 480"
-            style={{ transform: `scale(${zoomLevel})`, transformOrigin: "center center" }}
+            ref={svgRef}
+            className={`w-full h-[380px] select-none touch-none ${
+              zoomLevel > 1 ? (isDragging ? "cursor-grabbing" : "cursor-grab") : "cursor-crosshair"
+            }`}
+            viewBox={`${BASE_W / 2 + pan.x - viewW / 2} ${BASE_H / 2 + pan.y - viewH / 2} ${viewW} ${viewH}`}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={endDrag}
+            onPointerLeave={endDrag}
+            onDoubleClick={resetView}
           >
             {/* Grid Pattern Lines */}
             <defs>
@@ -97,7 +258,13 @@ export const Neo4jGraphVisualizer: React.FC<Neo4jGraphVisualizerProps> = ({
                 <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E5DDD0" strokeWidth="1" />
               </pattern>
             </defs>
-            <rect width="100%" height="100%" fill="url(#brutal-grid)" />
+            <rect
+              x={-BASE_W}
+              y={-BASE_H}
+              width={BASE_W * 3}
+              height={BASE_H * 3}
+              fill="url(#brutal-grid)"
+            />
 
             {/* Links between Nodes */}
             {links.map((link, idx) => {
@@ -154,7 +321,7 @@ export const Neo4jGraphVisualizer: React.FC<Neo4jGraphVisualizerProps> = ({
                 <g
                   key={node.id}
                   transform={`translate(${node.x}, ${node.y})`}
-                  onClick={() => onSelectNode(node)}
+                  onClick={() => handleNodeClick(node)}
                   className="cursor-pointer"
                 >
                   {/* Outer brutalist bounding box */}
