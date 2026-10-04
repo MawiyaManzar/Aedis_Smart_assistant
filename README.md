@@ -1,6 +1,16 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=200&section=header&text=Aedis%20Smart%20Assistant&fontSize=60&fontColor=fff&animation=twinkling&fontAlignY=32&desc=FINTECHSTICO%20'26%20%C2%B7%20Risk%20%26%20Fraud%20Intelligence%20Platform&descAlignY=55&descSize=16" width="100%"/>
+<br/>
+
+<h1>A &nbsp;E &nbsp;D &nbsp;I &nbsp;S</h1>
+
+<h3>S M A R T &nbsp;&nbsp; A S S I S T A N T</h3>
+
+<p><sub><b>&#9472;&#9472;&#9472;&#9472;&#9472;&nbsp; F I N T E C H S T I C O &nbsp;' 2 6 &nbsp;&#9472;&#9472;&#9472;&#9472;&#9472;</b></sub></p>
+
+<p><b><i>Risk &amp; Fraud Intelligence Platform</i></b></p>
+
+<hr width="55%"/>
 
 <br/>
 
@@ -570,8 +580,6 @@ A modest, realistic result for a small five-feature model. That is why the distr
 <br/>
 
 <div align="center">
-
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=120&section=footer" width="100%"/>
 
 **Aedis Smart Assistant &middot; FINTECHSTICO '26**
 
