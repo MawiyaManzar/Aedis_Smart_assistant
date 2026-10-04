@@ -1,16 +1,6 @@
 <div align="center">
 
-<br/>
-
-<h1>A &nbsp;E &nbsp;D &nbsp;I &nbsp;S</h1>
-
-<h3>S M A R T &nbsp;&nbsp; A S S I S T A N T</h3>
-
-<p><sub><b>&#9472;&#9472;&#9472;&#9472;&#9472;&nbsp; F I N T E C H S T I C O &nbsp;' 2 6 &nbsp;&#9472;&#9472;&#9472;&#9472;&#9472;</b></sub></p>
-
-<p><b><i>Risk &amp; Fraud Intelligence Platform</i></b></p>
-
-<hr width="55%"/>
+<img src="docs/assets/hero.png" alt="Aedis Smart Assistant - FINTECHSTICO 26 - Risk and Fraud Intelligence Platform" width="100%"/>
 
 <br/>
 
