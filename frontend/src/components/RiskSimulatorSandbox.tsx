@@ -175,6 +175,7 @@ export const RiskSimulatorSandbox: React.FC<RiskSimulatorSandboxProps> = ({
         guardrailsVerified: true,
         onnxLatencyMs: parseFloat((28 + Math.random() * 15).toFixed(1)),
         graphHops: beneficiaryType === "NEW_MULE" ? 2 : 0,
+        scoreSource: "HEURISTIC",
       };
 
       setEvaluatedResult(generatedTx);
