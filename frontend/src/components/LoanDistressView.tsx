@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import { BorrowerDistress } from "@/lib/types";
+import { ExplanationPanel } from "./ExplanationPanel";
+import { buildLoanFacts } from "@/lib/explain/facts";
 
 interface LoanDistressViewProps {
   borrowers: BorrowerDistress[];
@@ -248,6 +250,9 @@ export const LoanDistressView: React.FC<LoanDistressViewProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Plain-English explanation of the values above (numbers stay visible) */}
+            <ExplanationPanel facts={buildLoanFacts(selectedBorrower)} />
 
             {/* Natural Language Explanation Box */}
             <div className="border-2 border-[#141413] p-4 bg-[#FFFFFF]">
